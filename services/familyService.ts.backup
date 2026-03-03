@@ -1,0 +1,153 @@
+// ============================================
+// Family Service - Business Logic for Family Members
+// ============================================
+
+import { FamilyMember } from '@/types';
+import { scheduleBirthdayReminder } from '@/utils/notifications';
+import { generateId, getData, saveData, STORAGE_KEYS } from '@/utils/storage';
+
+class FamilyService {
+  // ============================================
+  // GET ALL FAMILY MEMBERS
+  // ============================================
+  async getFamilyMembers(profileID: string): Promise<FamilyMember[]> {
+    try {
+      const members = await getData<FamilyMember[]>(STORAGE_KEYS.FAMILY_MEMBERS);
+      if (!members) return [];
+      return members.filter(m => m.profileID === profileID);
+    } catch (error) {
+      console.error('Error getting family members:', error);
+      return [];
+    }
+  }
+
+  // ============================================
+  // ADD FAMILY MEMBER
+  // ============================================
+  async addFamilyMember(
+    memberData: Omit<FamilyMember, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<FamilyMember> {
+    try {
+      const newMember: FamilyMember = {
+        ...memberData,
+        id: generateId(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const existingMembers = await getData<FamilyMember[]>(STORAGE_KEYS.FAMILY_MEMBERS) || [];
+      const updatedMembers = [...existingMembers, newMember];
+      await saveData(STORAGE_KEYS.FAMILY_MEMBERS, updatedMembers);
+
+      // Schedule birthday reminder if enabled
+      if (newMember.birthdayReminderEnabled) {
+        await scheduleBirthdayReminder(
+          newMember.fullName,
+          newMember.dateOfBirth,
+          newMember.id
+        );
+      }
+
+      return newMember;
+    } catch (error) {
+      console.error('Error adding family member:', error);
+      throw error;
+    }
+  }
+
+  // ============================================
+  // EDIT FAMILY MEMBER
+  // ============================================
+  async editFamilyMember(
+    memberId: string,
+    updates: Partial<FamilyMember>
+  ): Promise<FamilyMember | null> {
+    try {
+      const members = await getData<FamilyMember[]>(STORAGE_KEYS.FAMILY_MEMBERS) || [];
+      const index = members.findIndex(m => m.id === memberId);
+
+      if (index === -1) {
+        throw new Error('Family member not found');
+      }
+
+      const updatedMember: FamilyMember = {
+        ...members[index],
+        ...updates,
+        updatedAt: new Date(),
+      };
+
+      members[index] = updatedMember;
+      await saveData(STORAGE_KEYS.FAMILY_MEMBERS, members);
+
+      // Update birthday reminder
+      if (updates.birthdayReminderEnabled !== undefined) {
+        if (updatedMember.birthdayReminderEnabled) {
+          await scheduleBirthdayReminder(
+            updatedMember.fullName,
+            updatedMember.dateOfBirth,
+            updatedMember.id
+          );
+        } else {
+          // Cancel notification if disabled (would need notification ID stored)
+        }
+      }
+
+      return updatedMember;
+    } catch (error) {
+      console.error('Error editing family member:', error);
+      return null;
+    }
+  }
+
+  // ============================================
+  // DELETE FAMILY MEMBER
+  // ============================================
+  async deleteFamilyMember(memberId: string): Promise<boolean> {
+    try {
+      const members = await getData<FamilyMember[]>(STORAGE_KEYS.FAMILY_MEMBERS) || [];
+      const filteredMembers = members.filter(m => m.id !== memberId);
+      await saveData(STORAGE_KEYS.FAMILY_MEMBERS, filteredMembers);
+      return true;
+    } catch (error) {
+      console.error('Error deleting family member:', error);
+      return false;
+    }
+  }
+
+  // ============================================
+  // SET BIRTHDAY REMINDER
+  // ============================================
+  async setBirthdayReminder(memberId: string, enabled: boolean): Promise<boolean> {
+    try {
+      const members = await getData<FamilyMember[]>(STORAGE_KEYS.FAMILY_MEMBERS) || [];
+      const member = members.find(m => m.id === memberId);
+
+      if (!member) return false;
+
+      member.birthdayReminderEnabled = enabled;
+      member.updatedAt = new Date();
+
+      await saveData(STORAGE_KEYS.FAMILY_MEMBERS, members);
+
+      if (enabled) {
+        await scheduleBirthdayReminder(member.fullName, member.dateOfBirth, member.id);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error setting birthday reminder:', error);
+      return false;
+    }
+  }
+
+  // ============================================
+  // BACKEND INTEGRATION NOTES:
+  // ============================================
+  // When backend is ready, replace with:
+  // - GET /api/family/:profileId
+  // - POST /api/family
+  // - PUT /api/family/:id
+  // - DELETE /api/family/:id
+}
+
+export default new FamilyService();
