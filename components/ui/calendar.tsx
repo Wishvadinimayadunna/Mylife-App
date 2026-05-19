@@ -4,7 +4,7 @@
 // Enhanced with Year & Month Pickers
 // ============================================
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
     Modal,
     ScrollView,
@@ -12,7 +12,7 @@ import {
     Text,
     TouchableOpacity,
     View,
-} from 'react-native';
+} from "react-native";
 
 interface CalendarProps {
   visible: boolean;
@@ -23,10 +23,20 @@ interface CalendarProps {
   minDate?: Date;
 }
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 export default function Calendar({
@@ -111,23 +121,39 @@ export default function Calendar({
     const selectedDate = new Date(
       viewDate.getFullYear(),
       viewDate.getMonth(),
-      day
+      day,
     );
+    // Normalize to midnight for accurate comparison
+    selectedDate.setHours(0, 0, 0, 0);
 
     // Check if date is within allowed range
-    if (maxDate && selectedDate > maxDate) return;
-    if (minDate && selectedDate < minDate) return;
+    if (maxDate) {
+      const maxDateNormalized = new Date(maxDate);
+      maxDateNormalized.setHours(0, 0, 0, 0);
+      if (selectedDate > maxDateNormalized) return;
+    }
+
+    if (minDate) {
+      const minDateNormalized = new Date(minDate);
+      minDateNormalized.setHours(0, 0, 0, 0);
+      if (selectedDate < minDateNormalized) return;
+    }
 
     onSelectDate(selectedDate);
     onClose();
   };
 
   const isDateSelected = (day: number) => {
-    if (!selectedDate || !(selectedDate instanceof Date) || isNaN(selectedDate.getTime())) return false;
+    if (
+      !selectedDate ||
+      !(selectedDate instanceof Date) ||
+      isNaN(selectedDate.getTime())
+    )
+      return false;
     const compareDate = new Date(
       viewDate.getFullYear(),
       viewDate.getMonth(),
-      day
+      day,
     );
     return (
       compareDate.getDate() === selectedDate.getDate() &&
@@ -140,10 +166,23 @@ export default function Calendar({
     const checkDate = new Date(
       viewDate.getFullYear(),
       viewDate.getMonth(),
-      day
+      day,
     );
-    if (maxDate && checkDate > maxDate) return true;
-    if (minDate && checkDate < minDate) return true;
+    // Normalize to midnight for accurate comparison
+    checkDate.setHours(0, 0, 0, 0);
+
+    if (maxDate) {
+      const maxDateNormalized = new Date(maxDate);
+      maxDateNormalized.setHours(0, 0, 0, 0);
+      if (checkDate > maxDateNormalized) return true;
+    }
+
+    if (minDate) {
+      const minDateNormalized = new Date(minDate);
+      minDateNormalized.setHours(0, 0, 0, 0);
+      if (checkDate < minDateNormalized) return true;
+    }
+
     return false;
   };
 
@@ -152,7 +191,7 @@ export default function Calendar({
     const compareDate = new Date(
       viewDate.getFullYear(),
       viewDate.getMonth(),
-      day
+      day,
     );
     return (
       compareDate.getDate() === today.getDate() &&
@@ -183,12 +222,15 @@ export default function Calendar({
           <View style={styles.calendarContainer}>
             {/* Header with Year & Month Pickers */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={handlePrevMonth} style={styles.navButton}>
+              <TouchableOpacity
+                onPress={handlePrevMonth}
+                style={styles.navButton}
+              >
                 <Text style={styles.navButtonText}>‹</Text>
               </TouchableOpacity>
-              
+
               <View style={styles.headerCenter}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.headerSelector}
                   onPress={() => {
                     setShowMonthPicker(!showMonthPicker);
@@ -200,8 +242,8 @@ export default function Calendar({
                   </Text>
                   <Text style={styles.dropdownIcon}>▼</Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.headerSelector}
                   onPress={() => {
                     setShowYearPicker(!showYearPicker);
@@ -215,7 +257,10 @@ export default function Calendar({
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity onPress={handleNextMonth} style={styles.navButton}>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                style={styles.navButton}
+              >
                 <Text style={styles.navButtonText}>›</Text>
               </TouchableOpacity>
             </View>
@@ -223,20 +268,25 @@ export default function Calendar({
             {/* Year Picker Dropdown */}
             {showYearPicker && (
               <View style={styles.pickerContainer}>
-                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={true}>
+                <ScrollView
+                  style={styles.pickerScroll}
+                  showsVerticalScrollIndicator={true}
+                >
                   {years.map((year) => (
                     <TouchableOpacity
                       key={year}
                       style={[
                         styles.pickerItem,
-                        year === viewDate.getFullYear() && styles.pickerItemSelected,
+                        year === viewDate.getFullYear() &&
+                          styles.pickerItemSelected,
                       ]}
                       onPress={() => handleYearSelect(year)}
                     >
                       <Text
                         style={[
                           styles.pickerItemText,
-                          year === viewDate.getFullYear() && styles.pickerItemTextSelected,
+                          year === viewDate.getFullYear() &&
+                            styles.pickerItemTextSelected,
                         ]}
                       >
                         {year}
@@ -250,20 +300,25 @@ export default function Calendar({
             {/* Month Picker Dropdown */}
             {showMonthPicker && (
               <View style={styles.pickerContainer}>
-                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={true}>
+                <ScrollView
+                  style={styles.pickerScroll}
+                  showsVerticalScrollIndicator={true}
+                >
                   {MONTHS.map((month, index) => (
                     <TouchableOpacity
                       key={month}
                       style={[
                         styles.pickerItem,
-                        index === viewDate.getMonth() && styles.pickerItemSelected,
+                        index === viewDate.getMonth() &&
+                          styles.pickerItemSelected,
                       ]}
                       onPress={() => handleMonthSelect(index)}
                     >
                       <Text
                         style={[
                           styles.pickerItemText,
-                          index === viewDate.getMonth() && styles.pickerItemTextSelected,
+                          index === viewDate.getMonth() &&
+                            styles.pickerItemTextSelected,
                         ]}
                       >
                         {month}
@@ -301,6 +356,7 @@ export default function Calendar({
                       styles.dayCell,
                       selected && styles.dayCellSelected,
                       today && !selected && styles.dayCellToday,
+                      disabled && styles.dayCellDisabled,
                     ]}
                     onPress={() => handleDayPress(day)}
                     disabled={disabled}
@@ -322,10 +378,13 @@ export default function Calendar({
 
             {/* Footer */}
             <View style={styles.footer}>
-              <TouchableOpacity style={styles.todayButton} onPress={() => {
-                const today = new Date();
-                setViewDate(today);
-              }}>
+              <TouchableOpacity
+                style={styles.todayButton}
+                onPress={() => {
+                  const today = new Date();
+                  setViewDate(today);
+                }}
+              >
                 <Text style={styles.todayButtonText}>Today</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -342,70 +401,70 @@ export default function Calendar({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   calendarContainer: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     width: 340,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   navButton: {
     width: 40,
     height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   navButtonText: {
     fontSize: 28,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
   },
   headerCenter: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   headerSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
   },
   dropdownIcon: {
     fontSize: 10,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   pickerContainer: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
     borderRadius: 12,
     marginBottom: 16,
     maxHeight: 200,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   pickerScroll: {
     maxHeight: 200,
@@ -414,74 +473,79 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: "#F3F4F6",
   },
   pickerItemSelected: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
   },
   pickerItemText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    textAlign: 'center',
+    fontWeight: "500",
+    color: "#374151",
+    textAlign: "center",
   },
   pickerItemTextSelected: {
-    color: 'white',
-    fontWeight: '700',
+    color: "white",
+    fontWeight: "700",
   },
   daysRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 12,
   },
   dayLabel: {
     width: 40,
-    alignItems: 'center',
+    alignItems: "center",
     marginHorizontal: 2,
   },
   dayLabelText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: "600",
+    color: "#6B7280",
   },
   calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
   dayCell: {
     width: 40,
     height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginHorizontal: 2,
     marginVertical: 2,
     borderRadius: 8,
   },
   dayCellSelected: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
   },
   dayCellToday: {
     borderWidth: 2,
-    borderColor: '#3B82F6',
+    borderColor: "#3B82F6",
+  },
+  dayCellDisabled: {
+    backgroundColor: "#F9FAFB",
+    opacity: 0.5,
   },
   dayText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
+    fontWeight: "500",
+    color: "#111827",
   },
   dayTextSelected: {
-    color: 'white',
-    fontWeight: '700',
+    color: "white",
+    fontWeight: "700",
   },
   dayTextDisabled: {
-    color: '#D1D5DB',
+    color: "#D1D5DB",
+    textDecorationLine: "line-through",
   },
   dayTextToday: {
-    color: '#3B82F6',
-    fontWeight: '700',
+    color: "#3B82F6",
+    fontWeight: "700",
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 20,
     gap: 12,
   },
@@ -489,24 +553,24 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
   },
   todayButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
   },
   cancelButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#3B82F6',
-    alignItems: 'center',
+    backgroundColor: "#3B82F6",
+    alignItems: "center",
   },
   cancelButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: 'white',
+    fontWeight: "600",
+    color: "white",
   },
 });

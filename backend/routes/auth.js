@@ -8,8 +8,14 @@ const jwt = require("jsonwebtoken");
 const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
 const authMiddleware = require("../middleware/auth");
+const mongoose = require("mongoose");
 
 const router = express.Router();
+
+// Helper function to check if database is connected
+const isDatabaseConnected = () => {
+  return mongoose.connection.readyState === 1;
+};
 
 // ============================================
 // REGISTER
@@ -31,40 +37,67 @@ router.post(
 
       const { email, password, fullName } = req.body;
 
-      // Check if user exists
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ message: "Email already registered" });
+      // Try to use database if connected, otherwise use DEV mode
+      if (isDatabaseConnected()) {
+        console.log(
+          "✅ Database connected - using real database for registration",
+        );
+
+        // Check if user exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+          return res.status(400).json({ message: "Email already registered" });
+        }
+
+        // Create user
+        const user = new User({ email, password, fullName: fullName || "" });
+        await user.save();
+
+        // Generate token
+        const token = jwt.sign(
+          { userId: user._id, email: user.email },
+          process.env.JWT_SECRET,
+          { expiresIn: "30d" },
+        );
+
+        res.status(201).json({
+          message: "User registered successfully",
+          token,
+          user: {
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+          },
+        });
+      } else {
+        // Database not connected - use DEV MODE fallback
+        console.log(
+          "⚠️ Database not connected - using DEV mode for registration",
+        );
+
+        const mockUserId = "dev_" + Date.now();
+        const token = jwt.sign(
+          { userId: mockUserId, email },
+          process.env.JWT_SECRET,
+          { expiresIn: "30d" },
+        );
+
+        res.status(201).json({
+          message: "User registered successfully (DEV MODE)",
+          token,
+          user: {
+            id: mockUserId,
+            email,
+            fullName: fullName || "",
+          },
+        });
       }
-
-      // Create user
-      const user = new User({ email, password, fullName: fullName || "" });
-      await user.save();
-
-      // Generate token
-      const token = jwt.sign(
-        { userId: user._id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "30d" },
-      );
-
-      res.status(201).json({
-        message: "User registered successfully",
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          fullName: user.fullName,
-        },
-      });
     } catch (error) {
       console.error("Register error:", error.message);
       console.error("Full error:", error);
-      res
-        .status(500)
-        .json({
-          message: error.message || "Registration failed. Please try again.",
-        });
+      res.status(500).json({
+        message: error.message || "Registration failed. Please try again.",
+      });
     }
   },
 );
@@ -86,33 +119,57 @@ router.post(
 
       const { email, password } = req.body;
 
-      // Find user
-      const user = await User.findOne({ email });
-      if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
+      // Try to use database if connected, otherwise use DEV mode
+      if (isDatabaseConnected()) {
+        console.log("✅ Database connected - using real database for login");
+
+        // Find user
+        const user = await User.findOne({ email });
+        if (!user) {
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        // Check password
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        // Generate token
+        const token = jwt.sign(
+          { userId: user._id, email: user.email },
+          process.env.JWT_SECRET,
+          { expiresIn: "30d" },
+        );
+
+        res.json({
+          message: "Login successful",
+          token,
+          user: {
+            id: user._id,
+            email: user.email,
+          },
+        });
+      } else {
+        // Database not connected - use DEV MODE fallback
+        console.log("⚠️ Database not connected - using DEV mode for login");
+
+        const mockUserId = "dev_" + Date.now();
+        const token = jwt.sign(
+          { userId: mockUserId, email },
+          process.env.JWT_SECRET,
+          { expiresIn: "30d" },
+        );
+
+        res.json({
+          message: "Login successful (DEV MODE)",
+          token,
+          user: {
+            id: mockUserId,
+            email,
+          },
+        });
       }
-
-      // Check password
-      const isMatch = await user.comparePassword(password);
-      if (!isMatch) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-
-      // Generate token
-      const token = jwt.sign(
-        { userId: user._id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "30d" },
-      );
-
-      res.json({
-        message: "Login successful",
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-        },
-      });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed. Please try again." });
