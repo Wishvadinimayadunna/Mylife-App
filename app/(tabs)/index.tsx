@@ -3,12 +3,16 @@
 // Shows all 8 modules with navigation
 // ============================================
 
+import futureEventService from "@/services/futureEventService";
 import profileService from "@/services/profileService";
+import shoppingService from "@/services/shoppingService";
+import todoService from "@/services/todoService";
+import utilityService from "@/services/utilityService";
 import { useAppStore } from "@/store/appStore";
 import { requestNotificationPermissions } from "@/utils/notifications";
 import { clearAuthToken } from "@/utils/storage";
 import { useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 // Module configuration - Professional color scheme
@@ -81,6 +85,12 @@ export default function HomeScreen() {
     isAuthenticated,
     clearAuth,
   } = useAppStore();
+  const [quickStats, setQuickStats] = useState({
+    tasks: 0,
+    bills: 0,
+    events: 0,
+    shopping: 0,
+  });
 
   useEffect(() => {
     initializeApp();
@@ -95,7 +105,46 @@ export default function HomeScreen() {
     // Load profile
     const profileData = await profileService.getProfile();
     setProfile(profileData);
+
+    if (profileData) {
+      await loadQuickStats();
+    }
+
     setIsInitialized(true);
+  };
+
+  const loadQuickStats = async () => {
+    try {
+      const [pendingTasks, unpaidBills, events, shoppingItems] = await Promise.all([
+        todoService.getPendingTasks(),
+        utilityService.getUnpaidBills(),
+        futureEventService.getFutureEvents(),
+        shoppingService.getShoppingItems(""),
+      ]);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const upcomingEvents = events.filter((event) => {
+        const eventDate = new Date(event.eventDate);
+        if (Number.isNaN(eventDate.getTime())) {
+          return false;
+        }
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate >= today && !event.completedAt;
+      });
+
+      const activeShoppingItems = shoppingItems.filter((item) => !item.isBought);
+
+      setQuickStats({
+        tasks: pendingTasks.length,
+        bills: unpaidBills.length,
+        events: upcomingEvents.length,
+        shopping: activeShoppingItems.length,
+      });
+    } catch (error) {
+      console.error("Load quick stats error:", error);
+    }
   };
 
   const handleModulePress = (route: string) => {
@@ -189,22 +238,22 @@ export default function HomeScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statIcon}>✅</Text>
-                <Text style={styles.statValue}>0</Text>
+                <Text style={styles.statValue}>{quickStats.tasks}</Text>
                 <Text style={styles.statLabel}>Tasks</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statIcon}>💰</Text>
-                <Text style={styles.statValue}>0</Text>
+                <Text style={styles.statValue}>{quickStats.bills}</Text>
                 <Text style={styles.statLabel}>Bills</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statIcon}>📅</Text>
-                <Text style={styles.statValue}>0</Text>
+                <Text style={styles.statValue}>{quickStats.events}</Text>
                 <Text style={styles.statLabel}>Events</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statIcon}>🛒</Text>
-                <Text style={styles.statValue}>0</Text>
+                <Text style={styles.statValue}>{quickStats.shopping}</Text>
                 <Text style={styles.statLabel}>Shopping</Text>
               </View>
             </View>
