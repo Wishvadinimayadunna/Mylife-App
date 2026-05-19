@@ -170,8 +170,17 @@ export interface UtilityBill {
 // ============================================
 export type TransactionType = "income" | "expense";
 
-export type FinanceCategory =
+export type IncomeCategoryType =
   | "Salary"
+  | "Business"
+  | "Freelance"
+  | "Investment"
+  | "Rental"
+  | "Bonus"
+  | "Gift"
+  | "Other";
+
+export type ExpenseCategoryType =
   | "Food"
   | "Transport"
   | "Bills"
@@ -179,8 +188,12 @@ export type FinanceCategory =
   | "Entertainment"
   | "Health"
   | "Education"
-  | "Investment"
+  | "Clothing"
+  | "Personal Care"
   | "Other";
+
+// Union for backwards compatibility
+export type FinanceCategory = IncomeCategoryType | ExpenseCategoryType;
 
 export interface FinanceTransaction {
   id: string;
@@ -212,23 +225,43 @@ export interface MonthlyFinanceSummary {
 // TO-DO LIST
 // ============================================
 export type TaskPriority = "High" | "Medium" | "Low";
-export type TaskRepeat = "None" | "Daily" | "Weekly" | "Monthly";
+export type TaskCategory =
+  | "Personal"
+  | "Work"
+  | "Shopping"
+  | "Health"
+  | "Family"
+  | "Finance"
+  | "Other";
+export type RecurrencePattern = "Daily" | "Weekly" | "Monthly" | "Yearly";
+
+export interface Subtask {
+  _id?: string;
+  title: string;
+  isCompleted: boolean;
+  completedAt?: Date;
+}
 
 export interface ToDoTask {
   id: string;
   profileID: string;
   title: string;
   description?: string;
-  isDone: boolean;
-  priority?: TaskPriority;
+  priority: TaskPriority;
+  category: TaskCategory;
   dueDate?: Date;
-  reminderTime?: string;
+  dueTime?: string; // Format: "HH:MM"
+  isCompleted: boolean;
+  completedAt?: Date;
+  isRecurring: boolean;
+  recurrencePattern?: RecurrencePattern;
   reminderEnabled: boolean;
-  repeat: TaskRepeat;
+  reminderTime?: string; // Format: "HH:MM"
   isShared: boolean;
+  tags?: string[];
+  subtasks?: Subtask[];
   createdAt: Date;
   updatedAt: Date;
-  completedAt?: Date;
 }
 
 // ============================================

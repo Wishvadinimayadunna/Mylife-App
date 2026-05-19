@@ -3,65 +3,92 @@
 // Track daily transactions, view summaries, profit/loss
 // ============================================
 
-import Calendar from '@/components/ui/calendar';
-import financeService from '@/services/financeService';
-import { useAppStore } from '@/store/appStore';
-import { FinanceCategory, FinanceSummary, FinanceTransaction, TransactionType } from '@/types';
-import { Stack } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import Calendar from "@/components/ui/calendar";
+import financeService from "@/services/financeService";
+import { useAppStore } from "@/store/appStore";
 import {
-  Alert,
-  FlatList,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+    ExpenseCategoryType,
+    FinanceSummary,
+    FinanceTransaction,
+    IncomeCategoryType,
+    TransactionType,
+} from "@/types";
+import { Stack } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+    Alert,
+    FlatList,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-const CATEGORIES: FinanceCategory[] = [
-  'Salary',
-  'Food',
-  'Transport',
-  'Bills',
-  'Shopping',
-  'Entertainment',
-  'Health',
-  'Education',
-  'Investment',
-  'Other',
-];
+const INCOME_CATEGORIES: IncomeCategoryType[] = ["Salary", "Business", "Freelance", "Investment", "Rental", "Bonus", "Gift", "Other"];
+const EXPENSE_CATEGORIES: ExpenseCategoryType[] = ["Food", "Transport", "Bills", "Shopping", "Entertainment", "Health", "Education", "Clothing", "Personal Care", "Other"];
 
-type ViewMode = 'today' | 'week' | 'month' | 'custom';
+const INCOME_EMOJI: Record<IncomeCategoryType, string> = {
+  Salary: "💼", Business: "🏢", Freelance: "💻", Investment: "📈",
+  Rental: "🏠", Bonus: "🎁", Gift: "🎀", Other: "💰",
+};
+const EXPENSE_EMOJI: Record<ExpenseCategoryType, string> = {
+  Food: "🍔", Transport: "🚗", Bills: "📄", Shopping: "🛍️",
+  Entertainment: "🎬", Health: "🏥", Education: "📚",
+  Clothing: "👕", "Personal Care": "💆", Other: "💳",
+};
+
+type ViewMode = "today" | "week" | "month" | "custom";
+type AlertLevel = "caution" | "warning" | "danger" | null;
 
 export default function FinanceScreen() {
   const { profile } = useAppStore();
-  const [todaySummary, setTodaySummary] = useState<FinanceSummary>({
-    totalIncome: 0,
-    totalExpense: 0,
-    balance: 0,
-    profitLossPercentage: 0,
-  });
+  const [todaySummary, setTodaySummary] = useState<FinanceSummary>({ totalIncome: 0, totalExpense: 0, balance: 0, profitLossPercentage: 0 });
   const [recentTransactions, setRecentTransactions] = useState<FinanceTransaction[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [transactionType, setTransactionType] = useState<TransactionType>('income');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<FinanceCategory>('Salary');
-  const [notes, setNotes] = useState('');
+  const [editingTransaction, setEditingTransaction] = useState<FinanceTransaction | null>(null);
+  const [transactionType, setTransactionType] = useState<TransactionType>("income");
+  const [amount, setAmount] = useState("");
+  const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryType>("Salary");
+  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategoryType>("Food");
+  const [notes, setNotes] = useState("");
   const [transactionDate, setTransactionDate] = useState(new Date());
   const [showTransactionCalendar, setShowTransactionCalendar] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('today');
+  const [viewMode, setViewMode] = useState<ViewMode>("today");
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
+  const [alertLevel, setAlertLevel] = useState<AlertLevel>(null);
+  const [alertRatio, setAlertRatio] = useState(0);
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   useEffect(() => {
     loadFinanceData();
+    checkBudgetAlert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, viewMode, customStartDate, customEndDate]);
+
+  const checkBudgetAlert = async () => {
+    if (!profile) return;
+    const monthYear = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
+    const monthly = await financeService.getMonthlySummary(profile.id, monthYear);
+    const { income, expense } = monthly;
+    let level: AlertLevel = null;
+    let ratio = 0;
+    if (income === 0 && expense > 0) { level = "danger"; ratio = 100; }
+    else if (income > 0) {
+      ratio = (expense / income) * 100;
+      if (ratio >= 100) level = "danger";
+      else if (ratio >= 80) level = "warning";
+      else if (ratio >= 60) level = "caution";
+    }
+    setAlertLevel(level);
+    setAlertRatio(ratio);
+    setAlertDismissed(false);
+  };
 
   const loadFinanceData = async () => {
     if (!profile) return;
@@ -70,36 +97,68 @@ export default function FinanceScreen() {
     let transactions: FinanceTransaction[];
 
     switch (viewMode) {
-      case 'week':
+      case "week":
         summary = await financeService.getWeeklySummary(profile.id);
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
-        transactions = await financeService.getTransactionsByDateRange(profile.id, weekAgo, new Date());
+        transactions = await financeService.getTransactionsByDateRange(
+          profile.id,
+          weekAgo,
+          new Date(),
+        );
         break;
-      case 'month':
+      case "month":
         const monthYear = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
-        const monthlySummary = await financeService.getMonthlySummary(profile.id, monthYear);
+        const monthlySummary = await financeService.getMonthlySummary(
+          profile.id,
+          monthYear,
+        );
         summary = {
           totalIncome: monthlySummary.income,
           totalExpense: monthlySummary.expense,
           balance: monthlySummary.balance,
-          profitLossPercentage: monthlySummary.income > 0 ? ((monthlySummary.balance / monthlySummary.income) * 100) : 0,
+          profitLossPercentage:
+            monthlySummary.income > 0
+              ? (monthlySummary.balance / monthlySummary.income) * 100
+              : 0,
         };
-        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        transactions = await financeService.getTransactionsByDateRange(profile.id, monthStart, new Date());
+        const monthStart = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1,
+        );
+        transactions = await financeService.getTransactionsByDateRange(
+          profile.id,
+          monthStart,
+          new Date(),
+        );
         break;
-      case 'custom':
+      case "custom":
         if (customStartDate && customEndDate) {
-          summary = await financeService.getSummaryByDateRange(profile.id, customStartDate, customEndDate);
-          transactions = await financeService.getTransactionsByDateRange(profile.id, customStartDate, customEndDate);
+          summary = await financeService.getSummaryByDateRange(
+            profile.id,
+            customStartDate,
+            customEndDate,
+          );
+          transactions = await financeService.getTransactionsByDateRange(
+            profile.id,
+            customStartDate,
+            customEndDate,
+          );
         } else {
           summary = await financeService.getTodaySummary(profile.id);
-          transactions = await financeService.getRecentTransactions(profile.id, 20);
+          transactions = await financeService.getRecentTransactions(
+            profile.id,
+            20,
+          );
         }
         break;
       default: // 'today'
         summary = await financeService.getTodaySummary(profile.id);
-        transactions = await financeService.getRecentTransactions(profile.id, 20);
+        transactions = await financeService.getRecentTransactions(
+          profile.id,
+          20,
+        );
     }
 
     setTodaySummary(summary);
@@ -107,59 +166,71 @@ export default function FinanceScreen() {
   };
 
   const openAddModal = (type: TransactionType) => {
+    setEditingTransaction(null);
     setTransactionType(type);
-    setAmount('');
-    setCategory(type === 'income' ? 'Salary' : 'Food');
-    setNotes('');
+    setAmount("");
+    setIncomeCategory("Salary");
+    setExpenseCategory("Food");
+    setNotes("");
     setTransactionDate(new Date());
     setIsModalVisible(true);
   };
 
-  const handleAddTransaction = async () => {
+  const openEditModal = (t: FinanceTransaction) => {
+    setEditingTransaction(t);
+    setTransactionType(t.type);
+    setAmount(String(t.amount));
+    if (t.type === "income") setIncomeCategory(t.category as IncomeCategoryType);
+    else setExpenseCategory(t.category as ExpenseCategoryType);
+    setNotes(t.notes || "");
+    setTransactionDate(new Date(t.date));
+    setIsModalVisible(true);
+  };
+
+  const handleSaveTransaction = async () => {
     if (!profile || !amount || parseFloat(amount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert("Error", "Please enter a valid amount");
       return;
     }
-
+    const cat = transactionType === "income" ? incomeCategory : expenseCategory;
     try {
-      await financeService.addTransaction({
-        profileID: profile.id,
-        type: transactionType,
-        amount: parseFloat(amount),
-        category,
-        date: transactionDate,
-        notes: notes || undefined,
-      });
-
+      if (editingTransaction) {
+        await financeService.updateTransaction(editingTransaction.id, {
+          type: transactionType, amount: parseFloat(amount),
+          category: cat, date: transactionDate, notes: notes || undefined,
+        });
+        Alert.alert("Success", "Transaction updated!");
+      } else {
+        await financeService.addTransaction({
+          profileID: profile.id, type: transactionType,
+          amount: parseFloat(amount), category: cat,
+          date: transactionDate, notes: notes || undefined,
+        });
+        Alert.alert("Success", "Transaction added!");
+      }
       setIsModalVisible(false);
       loadFinanceData();
-      Alert.alert('Success', 'Transaction added successfully!');
+      checkBudgetAlert();
     } catch {
-      Alert.alert('Error', 'Failed to add transaction');
+      Alert.alert("Error", "Failed to save transaction");
     }
   };
 
   const handleDeleteTransaction = (transaction: FinanceTransaction) => {
-    Alert.alert(
-      'Delete Transaction',
-      'Are you sure you want to delete this transaction?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await financeService.deleteTransaction(transaction.id);
-            loadFinanceData();
-          },
+    Alert.alert("Delete Transaction", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: async () => {
+          await financeService.deleteTransaction(transaction.id);
+          loadFinanceData();
+          checkBudgetAlert();
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const formatCurrency = (value: number) => {
-    return `₹${value.toFixed(0)}`;
-  };
+  const formatCurrency = (value: number) => `Rs. ${value.toFixed(0)}`;
 
   const formatDate = (date: Date) => {
     const d = new Date(date);
@@ -169,82 +240,89 @@ export default function FinanceScreen() {
     compareDate.setHours(0, 0, 0, 0);
 
     if (compareDate.getTime() === today.getTime()) {
-      return 'Today';
+      return "Today";
     }
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     if (compareDate.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
+      return "Yesterday";
     }
 
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   const formatDateFull = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return new Date(date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
   const getViewTitle = () => {
     switch (viewMode) {
-      case 'week':
-        return 'This Week';
-      case 'month':
-        return 'This Month';
-      case 'custom':
+      case "week":
+        return "This Week";
+      case "month":
+        return "This Month";
+      case "custom":
         if (customStartDate && customEndDate) {
           return `${formatDateFull(customStartDate)} - ${formatDateFull(customEndDate)}`;
         }
-        return 'Custom Range';
+        return "Custom Range";
       default:
         return "Today's Overview";
     }
   };
 
-  const getCategoryEmoji = (cat: FinanceCategory): string => {
-    const map: Record<FinanceCategory, string> = {
-      Salary: '💼',
-      Food: '🍔',
-      Transport: '🚗',
-      Bills: '📄',
-      Shopping: '🛍️',
-      Entertainment: '🎬',
-      Health: '🏥',
-      Education: '📚',
-      Investment: '📈',
-      Other: '💳',
-    };
-    return map[cat];
+  const getCategoryEmoji = (cat: string, type: TransactionType): string => {
+    if (type === "income") return INCOME_EMOJI[cat as IncomeCategoryType] ?? "💰";
+    return EXPENSE_EMOJI[cat as ExpenseCategoryType] ?? "💳";
+  };
+
+  const renderBudgetAlert = () => {
+    if (!alertLevel || alertDismissed) return null;
+    const cfg = {
+      danger: { bg: "#FEE2E2", border: "#EF4444", icon: "🔴", title: "Over Budget!", msg: `Expenses exceeded income this month (${alertRatio.toFixed(0)}%)` },
+      warning: { bg: "#FEF3C7", border: "#F59E0B", icon: "🟠", title: "Budget Warning", msg: `You've used ${alertRatio.toFixed(0)}% of this month's income` },
+      caution: { bg: "#FEFCE8", border: "#EAB308", icon: "🟡", title: "Budget Caution", msg: `You've used ${alertRatio.toFixed(0)}% of this month's income` },
+    }[alertLevel];
+    return (
+      <View style={[styles.alertBanner, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
+        <Text style={styles.alertIcon}>{cfg.icon}</Text>
+        <View style={styles.alertBody}>
+          <Text style={[styles.alertTitle, { color: cfg.border }]}>{cfg.title}</Text>
+          <Text style={styles.alertMsg}>{cfg.msg}</Text>
+        </View>
+        <TouchableOpacity onPress={() => setAlertDismissed(true)}>
+          <Text style={styles.alertClose}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   const renderTransaction = ({ item }: { item: FinanceTransaction }) => (
     <TouchableOpacity
       style={styles.transactionCard}
+      onPress={() => openEditModal(item)}
       onLongPress={() => handleDeleteTransaction(item)}
       activeOpacity={0.7}
     >
-      <View style={styles.transactionLeft}>
-        <View style={styles.categoryIcon}>
-          <Text style={styles.categoryEmoji}>{getCategoryEmoji(item.category)}</Text>
-        </View>
-        <View style={styles.transactionInfo}>
-          <Text style={styles.transactionCategory}>{item.category}</Text>
-          <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
-          {item.notes && <Text style={styles.transactionNotes}>{item.notes}</Text>}
-        </View>
+      <View style={[styles.categoryIcon, { backgroundColor: item.type === "income" ? "#D1FAE5" : "#FEE2E2" }]}>
+        <Text style={styles.categoryEmoji}>{getCategoryEmoji(item.category, item.type)}</Text>
       </View>
-      <Text
-        style={[
-          styles.transactionAmount,
-          item.type === 'income' ? styles.incomeAmount : styles.expenseAmount,
-        ]}
-      >
-        {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
-      </Text>
+      <View style={styles.transactionInfo}>
+        <Text style={styles.transactionCategory}>{item.category}</Text>
+        <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
+        {item.notes && <Text style={styles.transactionNotes}>{item.notes}</Text>}
+      </View>
+      <View style={styles.transactionRight}>
+        <Text style={[styles.transactionAmount, item.type === "income" ? styles.incomeAmount : styles.expenseAmount]}>
+          {item.type === "income" ? "+" : "-"}{formatCurrency(item.amount)}
+        </Text>
+        <Text style={styles.editHint}>tap to edit</Text>
+      </View>
     </TouchableOpacity>
   );
 
@@ -258,7 +336,7 @@ export default function FinanceScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Finance', headerShown: true }} />
+      <Stack.Screen options={{ title: "Finance", headerShown: true }} />
       <View style={styles.container}>
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* View Mode Selector */}
@@ -266,38 +344,70 @@ export default function FinanceScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.viewModeRow}>
                 <TouchableOpacity
-                  style={[styles.viewModeButton, viewMode === 'today' && styles.viewModeButtonActive]}
-                  onPress={() => setViewMode('today')}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "today" && styles.viewModeButtonActive,
+                  ]}
+                  onPress={() => setViewMode("today")}
                 >
-                  <Text style={[styles.viewModeText, viewMode === 'today' && styles.viewModeTextActive]}>
+                  <Text
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "today" && styles.viewModeTextActive,
+                    ]}
+                  >
                     Today
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.viewModeButton, viewMode === 'week' && styles.viewModeButtonActive]}
-                  onPress={() => setViewMode('week')}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "week" && styles.viewModeButtonActive,
+                  ]}
+                  onPress={() => setViewMode("week")}
                 >
-                  <Text style={[styles.viewModeText, viewMode === 'week' && styles.viewModeTextActive]}>
+                  <Text
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "week" && styles.viewModeTextActive,
+                    ]}
+                  >
                     Week
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
-                  onPress={() => setViewMode('month')}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "month" && styles.viewModeButtonActive,
+                  ]}
+                  onPress={() => setViewMode("month")}
                 >
-                  <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>
+                  <Text
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "month" && styles.viewModeTextActive,
+                    ]}
+                  >
                     Month
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.viewModeButton, viewMode === 'custom' && styles.viewModeButtonActive]}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "custom" && styles.viewModeButtonActive,
+                  ]}
                   onPress={() => {
-                    setViewMode('custom');
+                    setViewMode("custom");
                     if (!customStartDate) setCustomStartDate(new Date());
                     if (!customEndDate) setCustomEndDate(new Date());
                   }}
                 >
-                  <Text style={[styles.viewModeText, viewMode === 'custom' && styles.viewModeTextActive]}>
+                  <Text
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "custom" && styles.viewModeTextActive,
+                    ]}
+                  >
                     Custom
                   </Text>
                 </TouchableOpacity>
@@ -305,8 +415,11 @@ export default function FinanceScreen() {
             </ScrollView>
           </View>
 
+          {/* Budget Alert Banner */}
+          {renderBudgetAlert()}
+
           {/* Custom Date Range Selector */}
-          {viewMode === 'custom' && (
+          {viewMode === "custom" && (
             <View style={styles.dateRangeContainer}>
               <TouchableOpacity
                 style={styles.dateRangeButton}
@@ -314,7 +427,9 @@ export default function FinanceScreen() {
               >
                 <Text style={styles.dateRangeLabel}>From:</Text>
                 <Text style={styles.dateRangeValue}>
-                  {customStartDate ? formatDateFull(customStartDate) : 'Select date'}
+                  {customStartDate
+                    ? formatDateFull(customStartDate)
+                    : "Select date"}
                 </Text>
               </TouchableOpacity>
               <Text style={styles.dateRangeSeparator}>→</Text>
@@ -324,7 +439,9 @@ export default function FinanceScreen() {
               >
                 <Text style={styles.dateRangeLabel}>To:</Text>
                 <Text style={styles.dateRangeValue}>
-                  {customEndDate ? formatDateFull(customEndDate) : 'Select date'}
+                  {customEndDate
+                    ? formatDateFull(customEndDate)
+                    : "Select date"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -334,17 +451,19 @@ export default function FinanceScreen() {
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{getViewTitle()}</Text>
             <View style={styles.balanceContainer}>
-              <Text style={styles.balanceAmount}>{formatCurrency(todaySummary.balance)}</Text>
+              <Text style={styles.balanceAmount}>
+                {formatCurrency(todaySummary.balance)}
+              </Text>
               <Text
                 style={[
                   styles.balanceLabel,
                   todaySummary.balance >= 0 ? styles.profit : styles.loss,
                 ]}
               >
-                {todaySummary.balance >= 0 ? 'Profit' : 'Loss'}
+                {todaySummary.balance >= 0 ? "Profit" : "Loss"}
                 {todaySummary.profitLossPercentage !== 0 &&
-                  ` ${todaySummary.balance >= 0 ? '▲' : '▼'} ${Math.abs(
-                    todaySummary.profitLossPercentage
+                  ` ${todaySummary.balance >= 0 ? "▲" : "▼"} ${Math.abs(
+                    todaySummary.profitLossPercentage,
                   ).toFixed(1)}%`}
               </Text>
             </View>
@@ -370,13 +489,13 @@ export default function FinanceScreen() {
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[styles.actionButton, styles.incomeButton]}
-              onPress={() => openAddModal('income')}
+              onPress={() => openAddModal("income")}
             >
               <Text style={styles.actionButtonText}>+ Add Income</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.expenseButton]}
-              onPress={() => openAddModal('expense')}
+              onPress={() => openAddModal("expense")}
             >
               <Text style={styles.actionButtonText}>- Add Expense</Text>
             </TouchableOpacity>
@@ -388,7 +507,9 @@ export default function FinanceScreen() {
             {recentTransactions.length === 0 ? (
               <View style={styles.emptyTransactions}>
                 <Text style={styles.emptyIcon}>💰</Text>
-                <Text style={styles.emptyTransactionsText}>No transactions yet</Text>
+                <Text style={styles.emptyTransactionsText}>
+                  No transactions yet
+                </Text>
                 <Text style={styles.emptyTransactionsSubtext}>
                   Add your first income or expense
                 </Text>
@@ -417,10 +538,10 @@ export default function FinanceScreen() {
                 <Text style={styles.modalCancel}>Cancel</Text>
               </TouchableOpacity>
               <Text style={styles.modalTitle}>
-                Add {transactionType === 'income' ? 'Income' : 'Expense'}
+                {editingTransaction ? "Edit" : "Add"} {transactionType === "income" ? "Income" : "Expense"}
               </Text>
-              <TouchableOpacity onPress={handleAddTransaction}>
-                <Text style={styles.modalSave}>Add</Text>
+              <TouchableOpacity onPress={handleSaveTransaction}>
+                <Text style={styles.modalSave}>{editingTransaction ? "Save" : "Add"}</Text>
               </TouchableOpacity>
             </View>
 
@@ -428,42 +549,22 @@ export default function FinanceScreen() {
               {/* Type Toggle */}
               <View style={styles.typeToggle}>
                 <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    transactionType === 'income' && styles.typeButtonActive,
-                  ]}
-                  onPress={() => setTransactionType('income')}
+                  style={[styles.typeButton, transactionType === "income" && styles.typeButtonActive]}
+                  onPress={() => { setTransactionType("income"); setIncomeCategory("Salary"); }}
                 >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      transactionType === 'income' && styles.typeButtonTextActive,
-                    ]}
-                  >
-                    Income
-                  </Text>
+                  <Text style={[styles.typeButtonText, transactionType === "income" && styles.typeButtonTextActive]}>Income</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    transactionType === 'expense' && styles.typeButtonActive,
-                  ]}
-                  onPress={() => setTransactionType('expense')}
+                  style={[styles.typeButton, transactionType === "expense" && styles.typeButtonActive]}
+                  onPress={() => { setTransactionType("expense"); setExpenseCategory("Food"); }}
                 >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      transactionType === 'expense' && styles.typeButtonTextActive,
-                    ]}
-                  >
-                    Expense
-                  </Text>
+                  <Text style={[styles.typeButtonText, transactionType === "expense" && styles.typeButtonTextActive]}>Expense</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Amount */}
               <View style={styles.amountSection}>
-                <Text style={styles.currencySymbol}>₹</Text>
+                <Text style={styles.currencySymbol}>Rs.</Text>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
@@ -479,26 +580,27 @@ export default function FinanceScreen() {
                 <Text style={styles.label}>Category</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.categoryRow}>
-                    {CATEGORIES.map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.categoryChip,
-                          category === cat && styles.categoryChipActive,
-                        ]}
-                        onPress={() => setCategory(cat)}
-                      >
-                        <Text style={styles.categoryChipEmoji}>{getCategoryEmoji(cat)}</Text>
-                        <Text
-                          style={[
-                            styles.categoryChipText,
-                            category === cat && styles.categoryChipTextActive,
-                          ]}
+                    {(transactionType === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((cat) => {
+                      const isActive = transactionType === "income"
+                        ? incomeCategory === cat
+                        : expenseCategory === cat;
+                      const emoji = transactionType === "income"
+                        ? INCOME_EMOJI[cat as IncomeCategoryType]
+                        : EXPENSE_EMOJI[cat as ExpenseCategoryType];
+                      return (
+                        <TouchableOpacity
+                          key={cat}
+                          style={[styles.categoryChip, isActive && styles.categoryChipActive]}
+                          onPress={() => transactionType === "income"
+                            ? setIncomeCategory(cat as IncomeCategoryType)
+                            : setExpenseCategory(cat as ExpenseCategoryType)
+                          }
                         >
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <Text style={styles.categoryChipEmoji}>{emoji}</Text>
+                          <Text style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}>{cat}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </ScrollView>
               </View>
@@ -573,16 +675,16 @@ export default function FinanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: "#F5F7FA",
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   viewModeContainer: {
     paddingHorizontal: 16,
@@ -590,64 +692,64 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   viewModeRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   viewModeButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   viewModeButtonActive: {
-    backgroundColor: '#34D399',
-    borderColor: '#34D399',
+    backgroundColor: "#10B981",
+    borderColor: "#10B981",
   },
   viewModeText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: "600",
+    color: "#6B7280",
   },
   viewModeTextActive: {
-    color: 'white',
+    color: "white",
   },
   dateRangeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 8,
   },
   dateRangeButton: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   dateRangeLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    color: "#6B7280",
     marginBottom: 4,
   },
   dateRangeValue: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   dateRangeSeparator: {
     fontSize: 18,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   summaryCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     margin: 16,
     padding: 24,
     borderRadius: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -655,59 +757,59 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     fontSize: 16,
-    color: '#6B7280',
+    color: "#6B7280",
     marginBottom: 16,
   },
   balanceContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 24,
   },
   balanceAmount: {
     fontSize: 48,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 8,
   },
   balanceLabel: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   profit: {
-    color: '#34D399',
+    color: "#10B981",
   },
   loss: {
-    color: '#EF4444',
+    color: "#F97316",
   },
   statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   statBox: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statDivider: {
     width: 1,
     height: 40,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
   },
   statLabel: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginBottom: 8,
   },
   statValue: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   incomeText: {
-    color: '#34D399',
+    color: "#10B981",
   },
   expenseText: {
-    color: '#EF4444',
+    color: "#F97316",
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 16,
     gap: 12,
     marginBottom: 16,
@@ -716,35 +818,35 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
   incomeButton: {
-    backgroundColor: '#34D399',
+    backgroundColor: "#10B981",
   },
   expenseButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: "#F97316",
   },
   actionButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   transactionsSection: {
     padding: 16,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginBottom: 16,
   },
   emptyTransactions: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 40,
   },
   emptyIcon: {
@@ -753,108 +855,125 @@ const styles = StyleSheet.create({
   },
   emptyTransactionsText: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
     marginBottom: 8,
   },
   emptyTransactionsSubtext: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   transactionCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
-  transactionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
   categoryIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   categoryEmoji: {
     fontSize: 24,
   },
   transactionInfo: {
     flex: 1,
+    marginLeft: 12,
   },
+  transactionRight: {
+    alignItems: "flex-end",
+  },
+  editHint: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 2,
+  },
+  // Budget Alert
+  alertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 10,
+  },
+  alertIcon: { fontSize: 22 },
+  alertBody: { flex: 1 },
+  alertTitle: { fontSize: 13, fontWeight: "700" },
+  alertMsg: { fontSize: 12, color: "#374151", marginTop: 2 },
+  alertClose: { fontSize: 14, color: "#6B7280", fontWeight: "600", padding: 4 },
   transactionCategory: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
     marginBottom: 2,
   },
   transactionDate: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: "#9CA3AF",
   },
   transactionNotes: {
     fontSize: 12,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 2,
   },
   transactionAmount: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   incomeAmount: {
-    color: '#34D399',
+    color: "#10B981",
   },
   expenseAmount: {
-    color: '#EF4444',
+    color: "#F97316",
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: "#F5F7FA",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   modalCancel: {
     fontSize: 16,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
   },
   modalSave: {
     fontSize: 16,
-    color: '#34D399',
-    fontWeight: '600',
+    color: "#10B981",
+    fontWeight: "600",
   },
   modalContent: {
     flex: 1,
     padding: 16,
   },
   typeToggle: {
-    flexDirection: 'row',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 4,
     marginBottom: 24,
@@ -862,111 +981,111 @@ const styles = StyleSheet.create({
   typeButton: {
     flex: 1,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 8,
   },
   typeButtonActive: {
-    backgroundColor: '#34D399',
+    backgroundColor: "#10B981",
   },
   typeButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: "600",
+    color: "#6B7280",
   },
   typeButtonTextActive: {
-    color: 'white',
+    color: "white",
   },
   amountSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
     padding: 24,
     borderRadius: 16,
     marginBottom: 24,
   },
   currencySymbol: {
     fontSize: 48,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     marginRight: 8,
   },
   amountInput: {
     fontSize: 56,
-    fontWeight: 'bold',
-    color: '#1F2937',
+    fontWeight: "bold",
+    color: "#1F2937",
     flex: 1,
-    textAlign: 'left',
+    textAlign: "left",
   },
   inputGroup: {
     marginBottom: 24,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
     marginBottom: 12,
   },
   categoryRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   categoryChip: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: "#E5E7EB",
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   categoryChipActive: {
-    backgroundColor: '#34D39920',
-    borderColor: '#34D399',
+    backgroundColor: "#10B98120",
+    borderColor: "#10B981",
   },
   categoryChipEmoji: {
     fontSize: 20,
   },
   categoryChipText: {
     fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
+    color: "#6B7280",
+    fontWeight: "500",
   },
   categoryChipTextActive: {
-    color: '#34D399',
-    fontWeight: '600',
+    color: "#10B981",
+    fontWeight: "600",
   },
   datePickerButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     borderRadius: 12,
     padding: 14,
   },
   datePickerText: {
     fontSize: 16,
-    color: '#1F2937',
-    fontWeight: '500',
+    color: "#1F2937",
+    fontWeight: "500",
   },
   datePickerIcon: {
     fontSize: 20,
   },
   input: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   textArea: {
     height: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
 });

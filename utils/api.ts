@@ -8,7 +8,7 @@ import axios from "axios";
 
 // Base API URL - change this for production
 // Use your computer's IP address so mobile devices can connect
-const API_BASE_URL = "http://10.28.15.15:5000/api";
+const API_BASE_URL = "http://10.161.238.15:5000/api";
 
 // Create axios instance
 const api = axios.create({

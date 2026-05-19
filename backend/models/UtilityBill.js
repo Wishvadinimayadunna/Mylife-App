@@ -1,65 +1,69 @@
 // ============================================
-// Future Event Model
+// Utility Bill Model
+// Electricity, Water, Wi-Fi, Mobile, Gas, TV, Rent, Insurance bills
 // ============================================
 
 const mongoose = require("mongoose");
 
-const futureEventSchema = new mongoose.Schema({
+const utilityBillSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
   },
-  title: {
+  name: {
     type: String,
     required: true,
   },
   type: {
     type: String,
     enum: [
-      "Birthday",
-      "Anniversary",
-      "Wedding",
-      "Party",
-      "Vacation",
-      "Interview",
-      "Meeting",
+      "Electricity",
+      "Water",
+      "Wi-Fi",
+      "Mobile",
+      "Gas",
+      "TV",
+      "Rent",
+      "Insurance",
       "Other",
     ],
     required: true,
   },
-  eventDate: {
+  amount: {
+    type: Number,
+    required: true,
+  },
+  dueDay: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 31,
+  },
+  dueDate: {
     type: Date,
     required: true,
   },
-  eventTime: {
-    type: String,
-    required: true,
-  },
-  location: {
-    type: String,
-  },
-  notes: {
-    type: String,
-  },
-  reminderOptions: {
-    type: [String],
-    enum: ["1_week_before", "1_day_before", "same_day"],
-    default: [],
-  },
-  sendReminderToSpouse: {
+  isRecurring: {
     type: Boolean,
-    default: false,
+    default: true,
+  },
+  reminderEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  reminderTime: {
+    type: String,
   },
   isShared: {
     type: Boolean,
     default: false,
   },
-  isRecurringYearly: {
+  isPaid: {
     type: Boolean,
     default: false,
   },
-  completedAt: {
+  paidDate: {
     type: Date,
   },
   createdAt: {
@@ -73,12 +77,13 @@ const futureEventSchema = new mongoose.Schema({
 });
 
 // Update timestamp on save
-futureEventSchema.pre("save", function (next) {
+utilityBillSchema.pre("save", function (next) {
   this.updatedAt = new Date();
   next();
 });
 
 // Index for faster queries
-futureEventSchema.index({ userId: 1, eventDate: 1 });
+utilityBillSchema.index({ userId: 1, dueDate: 1 });
+utilityBillSchema.index({ userId: 1, isPaid: 1 });
 
-module.exports = mongoose.model("FutureEvent", futureEventSchema);
+module.exports = mongoose.model("UtilityBill", utilityBillSchema);

@@ -193,7 +193,13 @@ export default function FutureEventScreen() {
     setTempVoiceInput("");
   };
 
-  const handleTemplateCalendarSelect = (dateString: string) => {
+  const handleTemplateCalendarSelect = (date: Date) => {
+    // Format date to a readable string for voice input
+    const dateString = date.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
     setTempVoiceInput(dateString);
     setShowTemplateCalendar(false);
   };
@@ -1424,10 +1430,11 @@ export default function FutureEventScreen() {
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>📆 Select Date</Text>
                 <Calendar
-                  onSelectDate={(dateString) =>
-                    handleTemplateCalendarSelect(dateString)
-                  }
-                  selectedDate=""
+                  visible={true}
+                  onClose={() => setShowTemplateCalendar(false)}
+                  onSelectDate={handleTemplateCalendarSelect}
+                  selectedDate={undefined}
+                  minDate={new Date()} // Only allow today and future dates
                 />
                 <TouchableOpacity
                   style={[
@@ -1452,6 +1459,7 @@ export default function FutureEventScreen() {
           selectedDate={
             formData.eventDate ? new Date(formData.eventDate) : undefined
           }
+          minDate={new Date()} // Only allow today and future dates
         />
 
         {/* Time Picker Modal */}
