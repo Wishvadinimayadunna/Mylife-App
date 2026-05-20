@@ -18,6 +18,7 @@ interface AppState {
   profile: Profile | null;
   setProfile: (profile: Profile | null) => void;
 
+
   // Loading states
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -54,6 +55,7 @@ export const useAppStore = create<AppState>((set) => ({
   // Profile
   profile: null,
   setProfile: (profile) => set({ profile }),
+
 
   // Loading
   isLoading: false,
