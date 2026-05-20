@@ -51,12 +51,20 @@ export default function Calendar({
   const [showYearPicker, setShowYearPicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
-  // Generate year range (100 years back from current year)
+  // Generate year range — future years when minDate set, past years otherwise
   const generateYears = () => {
     const currentYear = new Date().getFullYear();
     const years: number[] = [];
-    for (let i = currentYear; i >= currentYear - 100; i--) {
-      years.push(i);
+    if (minDate) {
+      // Only current year + 10 future years
+      for (let i = currentYear; i <= currentYear + 10; i++) {
+        years.push(i);
+      }
+    } else {
+      // 100 years back
+      for (let i = currentYear; i >= currentYear - 100; i--) {
+        years.push(i);
+      }
     }
     return years;
   };
@@ -91,7 +99,18 @@ export default function Calendar({
     return days;
   };
 
+  const isPrevMonthDisabled = () => {
+    if (!minDate) return false;
+    const min = new Date(minDate);
+    return (
+      viewDate.getFullYear() < min.getFullYear() ||
+      (viewDate.getFullYear() === min.getFullYear() &&
+        viewDate.getMonth() <= min.getMonth())
+    );
+  };
+
   const handlePrevMonth = () => {
+    if (isPrevMonthDisabled()) return;
     const newDate = new Date(viewDate);
     newDate.setMonth(newDate.getMonth() - 1);
     setViewDate(newDate);
@@ -224,7 +243,7 @@ export default function Calendar({
             <View style={styles.header}>
               <TouchableOpacity
                 onPress={handlePrevMonth}
-                style={styles.navButton}
+                style={[styles.navButton, isPrevMonthDisabled() && { opacity: 0.3 }]}
               >
                 <Text style={styles.navButtonText}>‹</Text>
               </TouchableOpacity>

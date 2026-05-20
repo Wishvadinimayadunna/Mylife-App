@@ -1,421 +1,573 @@
 // ============================================
-// MyLife Dashboard - Main Home Screen
-// Shows all 8 modules with navigation
+// MyLife Dashboard — Redesigned Home Screen
+// Dark hero banner · compact cards · events widget
 // ============================================
 
+import familyService from "@/services/familyService";
 import futureEventService from "@/services/futureEventService";
 import profileService from "@/services/profileService";
 import shoppingService from "@/services/shoppingService";
 import todoService from "@/services/todoService";
 import utilityService from "@/services/utilityService";
 import { useAppStore } from "@/store/appStore";
-import { requestNotificationPermissions } from "@/utils/notifications";
-import { clearAuthToken } from "@/utils/storage";
+import { FutureEvent } from "@/types";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-// Module configuration - Professional color scheme
-const modules = [
+// ─── Section config ──────────────────────────────────────────────────────────
+const SECTIONS = [
   {
     id: "profile",
     name: "Profile",
-    icon: "👤",
-    color: "#1E3A8A",
+    emoji: "👤",
+    color: "#4F46E5",
+    bg: "#EEF2FF",
     route: "/profile",
+    staticLabel: "My details",
   },
   {
     id: "family",
     name: "Family",
-    icon: "👨‍👩‍👧‍👦",
-    color: "#1E40AF",
+    emoji: "👨‍👩‍👧‍👦",
+    color: "#2563EB",
+    bg: "#DBEAFE",
     route: "/family",
+    staticLabel: "members",
   },
   {
     id: "shopping",
     name: "Shopping",
-    icon: "🛒",
-    color: "#0369A1",
+    emoji: "🛒",
+    color: "#0D9488",
+    bg: "#CCFBF1",
     route: "/shopping",
+    staticLabel: "items",
   },
   {
     id: "health",
     name: "Health",
-    icon: "❤️",
-    color: "#0F766E",
+    emoji: "❤️",
+    color: "#DC2626",
+    bg: "#FEE2E2",
     route: "/health",
+    staticLabel: "Log today",
   },
   {
     id: "utility",
     name: "Utility",
-    icon: "💡",
-    color: "#0E7490",
+    emoji: "💡",
+    color: "#D97706",
+    bg: "#FEF3C7",
     route: "/utility",
+    staticLabel: "unpaid",
   },
   {
     id: "todo",
-    name: "To-Do List",
-    icon: "✅",
-    color: "#334155",
+    name: "To-Do",
+    emoji: "✅",
+    color: "#16A34A",
+    bg: "#DCFCE7",
     route: "/todo",
+    staticLabel: "pending",
   },
   {
     id: "finance",
     name: "Finance",
-    icon: "💰",
-    color: "#065F46",
+    emoji: "💰",
+    color: "#F97316",
+    bg: "#FFEDD5",
     route: "/finance",
+    staticLabel: "0 bills",
   },
   {
     id: "future-event",
-    name: "Future Events",
-    icon: "📅",
-    color: "#1F2937",
+    name: "Events",
+    emoji: "📅",
+    color: "#DB2777",
+    bg: "#FCE7F3",
     route: "/future-event",
+    staticLabel: "upcoming",
   },
 ];
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatEventDate(dateVal: Date | string): { month: string; day: string } {
+  const d = new Date(dateVal);
+  return {
+    month: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+    day: String(d.getDate()),
+  };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
-  const {
-    profile,
-    setProfile,
-    isInitialized,
-    setIsInitialized,
-    isAuthenticated,
-    clearAuth,
-  } = useAppStore();
-  const [quickStats, setQuickStats] = useState({
+  const { profile, setProfile, isInitialized, setIsInitialized, isAuthenticated } =
+    useAppStore();
+
+  const [stats, setStats] = useState({
     tasks: 0,
-    bills: 0,
     events: 0,
     shopping: 0,
+    familyCount: 0,
+    unpaidBills: 0,
   });
+  const [upcomingEvents, setUpcomingEvents] = useState<FutureEvent[]>([]);
 
   useEffect(() => {
     initializeApp();
   }, []);
 
   const initializeApp = async () => {
-    if (isInitialized) return;
+    if (isInitialized) {
+      // Still refresh data on each visit
+      await loadData();
+      return;
+    }
 
-    // Request notification permissions
-    await requestNotificationPermissions();
+    // Silently request notifications (no error banner)
+    try {
+      const { requestNotificationPermissions } = await import(
+        "@/utils/notifications"
+      );
+      await requestNotificationPermissions();
+    } catch (_) {}
 
-    // Load profile
     const profileData = await profileService.getProfile();
     setProfile(profileData);
 
     if (profileData) {
-      await loadQuickStats();
+      await loadData();
     }
 
     setIsInitialized(true);
   };
 
-  const loadQuickStats = async () => {
+  const loadData = async () => {
     try {
-      const [pendingTasks, unpaidBills, events, shoppingItems] = await Promise.all([
-        todoService.getPendingTasks(),
-        utilityService.getUnpaidBills(),
-        futureEventService.getFutureEvents(),
-        shoppingService.getShoppingItems(""),
-      ]);
+      const [pendingTasks, unpaidBills, allEvents, shoppingItems, family] =
+        await Promise.all([
+          todoService.getPendingTasks(),
+          utilityService.getUnpaidBills(),
+          futureEventService.getFutureEvents(),
+          shoppingService.getShoppingItems(""),
+          familyService.getFamilyMembers(""),
+        ]);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const upcomingEvents = events.filter((event) => {
-        const eventDate = new Date(event.eventDate);
-        if (Number.isNaN(eventDate.getTime())) {
-          return false;
-        }
-        eventDate.setHours(0, 0, 0, 0);
-        return eventDate >= today && !event.completedAt;
-      });
+      const upcoming = allEvents
+        .filter((e) => {
+          const d = new Date(e.eventDate);
+          if (Number.isNaN(d.getTime())) return false;
+          d.setHours(0, 0, 0, 0);
+          return d >= today && !e.completedAt;
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
+        );
 
-      const activeShoppingItems = shoppingItems.filter((item) => !item.isBought);
+      setUpcomingEvents(upcoming.slice(0, 2));
 
-      setQuickStats({
+      setStats({
         tasks: pendingTasks.length,
-        bills: unpaidBills.length,
-        events: upcomingEvents.length,
-        shopping: activeShoppingItems.length,
+        events: upcoming.length,
+        shopping: shoppingItems.filter((i) => !i.isBought).length,
+        familyCount: family.length,
+        unpaidBills: unpaidBills.length,
       });
-    } catch (error) {
-      console.error("Load quick stats error:", error);
+    } catch (err) {
+      console.error("loadData error:", err);
     }
   };
 
-  const handleModulePress = (route: string) => {
-    router.push(route as any);
+  // Build sub-labels per section
+  const getSubLabel = (id: string, staticLabel: string): string => {
+    switch (id) {
+      case "family":
+        return stats.familyCount === 1
+          ? "1 member"
+          : `${stats.familyCount} members`;
+      case "shopping":
+        return stats.shopping === 1 ? "1 item" : `${stats.shopping} items`;
+      case "utility":
+        return stats.unpaidBills === 0
+          ? "All paid"
+          : `${stats.unpaidBills} unpaid`;
+      case "todo":
+        return stats.tasks === 0
+          ? "0 pending"
+          : `${stats.tasks} pending`;
+      case "future-event":
+        return stats.events === 0
+          ? "Plan ahead"
+          : `${stats.events} upcoming`;
+      default:
+        return staticLabel;
+    }
   };
 
-  const handleLogin = () => {
-    router.push("/auth/login");
-  };
-
-  const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          // Clear auth state
-          clearAuth();
-          setProfile(null);
-          setIsInitialized(false);
-
-          // Clear stored token
-          await clearAuthToken();
-
-          // Navigate to login
-          router.replace("/auth/login");
-        },
-      },
-    ]);
-  };
+  const firstName = profile?.fullName?.split(" ")[0] ?? "there";
+  const initials = profile ? getInitials(profile.fullName) : "?";
 
   return (
-    <View style={styles.container}>
-      <View style={styles.contentContainer}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>MyLife</Text>
-          <Text style={styles.subtitle}>
-            {profile
-              ? `Welcome back, ${profile.fullName}! 👋`
-              : "Your life, organized in one place 🌟"}
-          </Text>
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#1E2340" />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Hero Banner ───────────────────────────────────────────── */}
+        <View style={styles.hero}>
+          {/* Avatar */}
+          <View style={styles.avatarWrap}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
 
-          {/* Login/Logout Button */}
-          {isAuthenticated ? (
-            <TouchableOpacity
-              style={styles.logoutButton}
-              onPress={handleLogout}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.logoutButtonText}>🚪 Logout</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleLogin}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.loginButtonText}>🔐 Login</Text>
-            </TouchableOpacity>
-          )}
+          {/* Date + greeting */}
+          <Text style={styles.heroDate}>{formatDate(new Date())}</Text>
+          <Text style={styles.heroGreeting}>
+            {getGreeting()}, {firstName} 👋
+          </Text>
+          <Text style={styles.heroSub}>Here's what's on your plate today.</Text>
+
+          {/* Stat chips */}
+          <View style={styles.chipRow}>
+            <View style={styles.chip}>
+              <Text style={styles.chipNum}>{stats.shopping}</Text>
+              <Text style={styles.chipLbl}>Shopping</Text>
+            </View>
+            <View style={styles.chipDivider} />
+            <View style={styles.chip}>
+              <Text style={styles.chipNum}>{stats.tasks}</Text>
+              <Text style={styles.chipLbl}>Tasks</Text>
+            </View>
+            <View style={styles.chipDivider} />
+            <View style={styles.chip}>
+              <Text style={styles.chipNum}>{stats.events}</Text>
+              <Text style={styles.chipLbl}>Upcoming</Text>
+            </View>
+          </View>
         </View>
 
-        {/* Modules Grid - Centered and Balanced */}
-        <View style={styles.gridContainer}>
+        {/* ── Quick Access Cards ────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>QUICK ACCESS</Text>
+
+          {/* 2-column grid */}
           <View style={styles.grid}>
-            {modules.map((module) => (
+            {SECTIONS.map((s) => (
               <TouchableOpacity
-                key={module.id}
-                style={[styles.moduleCard, { backgroundColor: module.color }]}
-                onPress={() => handleModulePress(module.route)}
-                activeOpacity={0.8}
+                key={s.id}
+                style={styles.card}
+                onPress={() => router.push(s.route as any)}
+                activeOpacity={0.75}
               >
-                <View style={styles.moduleContent}>
-                  <Text style={styles.moduleIcon}>{module.icon}</Text>
-                  <Text style={styles.moduleName}>{module.name}</Text>
+                {/* Colored icon box — left */}
+                <View style={[styles.cardIcon, { backgroundColor: s.bg }]}>
+                  <Text style={styles.cardEmoji}>{s.emoji}</Text>
+                </View>
+
+                {/* Name + sub-label stacked — right */}
+                <View style={styles.cardTextBlock}>
+                  <Text style={styles.cardName}>{s.name}</Text>
+                  <Text style={styles.cardSub}>
+                    {getSubLabel(s.id, s.staticLabel)}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Quick Overview - Bottom Section */}
-        {profile && (
-          <View style={styles.statsContainer}>
-            <Text style={styles.statsTitle}>📊 Quick Overview</Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>✅</Text>
-                <Text style={styles.statValue}>{quickStats.tasks}</Text>
-                <Text style={styles.statLabel}>Tasks</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>💰</Text>
-                <Text style={styles.statValue}>{quickStats.bills}</Text>
-                <Text style={styles.statLabel}>Bills</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>📅</Text>
-                <Text style={styles.statValue}>{quickStats.events}</Text>
-                <Text style={styles.statLabel}>Events</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>🛒</Text>
-                <Text style={styles.statValue}>{quickStats.shopping}</Text>
-                <Text style={styles.statLabel}>Shopping</Text>
-              </View>
+        {/* ── Upcoming Events Widget ────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>UPCOMING EVENTS</Text>
+
+          {upcomingEvents.length === 0 ? (
+            <View style={styles.emptyEventsCard}>
+              <Text style={styles.emptyEventsText}>
+                📅  No upcoming events
+              </Text>
             </View>
-          </View>
-        )}
-      </View>
+          ) : (
+            upcomingEvents.map((ev) => {
+              const { month, day } = formatEventDate(ev.eventDate);
+              return (
+                <TouchableOpacity
+                  key={ev.id}
+                  style={styles.eventRow}
+                  onPress={() => router.push("/future-event" as any)}
+                  activeOpacity={0.7}
+                >
+                  {/* Date badge */}
+                  <View style={styles.dateBadge}>
+                    <Text style={styles.dateBadgeMon}>{month}</Text>
+                    <Text style={styles.dateBadgeDay}>{day}</Text>
+                  </View>
+
+                  {/* Event info */}
+                  <View style={styles.eventInfo}>
+                    <Text style={styles.eventTitle}>{ev.title}</Text>
+                    <Text style={styles.eventMeta}>
+                      {ev.location ? `${ev.location} · ` : ""}
+                      {ev.eventTime}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Bottom padding so last card clears tab bar */}
+        <View style={{ height: 20 }} />
+      </ScrollView>
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const STATUS_H = Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 44;
+
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "#F8FAFC",
   },
-  contentContainer: {
+  scroll: {
     flex: 1,
-    padding: 16,
-    paddingBottom: 12,
   },
-  header: {
-    marginBottom: 12,
-    alignItems: "center",
-    paddingHorizontal: 16,
+  scrollContent: {
+    paddingBottom: 24,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#111827",
-    marginBottom: 6,
-    letterSpacing: -1,
-  },
-  loginButton: {
-    marginTop: 8,
-    backgroundColor: "#1F2937",
-    paddingVertical: 6,
+
+  // ── Hero
+  hero: {
+    backgroundColor: "#1E2340",
+    paddingTop: STATUS_H + 16,
+    paddingBottom: 24,
     paddingHorizontal: 20,
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
-  loginButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "white",
-    textAlign: "center",
-  },
-  logoutButton: {
-    marginTop: 8,
-    backgroundColor: "#374151",
-    paddingVertical: 6,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  logoutButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "white",
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 12,
-    color: "#4B5563",
-    textAlign: "center",
-    lineHeight: 16,
-  },
-  hint: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginTop: 8,
-    fontWeight: "500",
-  },
-  gridContainer: {
-    flex: 1,
+  avatarWrap: {
+    position: "absolute",
+    top: STATUS_H + 16,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
+  avatarText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+  heroDate: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 13,
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+  heroGreeting: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  heroSub: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 13,
+    fontWeight: "400",
+    marginBottom: 20,
+  },
+
+  // ── Stat chips
+  chipRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  chip: {
+    flex: 1,
+    alignItems: "center",
+  },
+  chipNum: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "700",
+    lineHeight: 26,
+  },
+  chipLbl: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  chipDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
+  // ── Sections
+  section: {
+    marginTop: 22,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94A3B8",
+    letterSpacing: 1.0,
+    marginBottom: 10,
+  },
+
+  // ── Section grid + cards
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 12,
-    width: "100%",
-    maxWidth: 360,
+    gap: 10,
   },
-  moduleCard: {
-    width: 170,
-    height: 120,
-    borderRadius: 12,
-    padding: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  moduleContent: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  moduleIcon: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
-  moduleName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "white",
-    textAlign: "center",
-    letterSpacing: 0.2,
-  },
-  statsContainer: {
-    marginTop: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statsTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  statsRow: {
+  card: {
+    width: "48%",
     flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  statItem: {
     alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  cardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    flexShrink: 0,
+  },
+  cardEmoji: {
+    fontSize: 20,
+  },
+  cardTextBlock: {
     flex: 1,
   },
-  statIcon: {
-    fontSize: 18,
+  cardName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1E293B",
     marginBottom: 2,
   },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 1,
+  cardSub: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "400",
   },
-  statLabel: {
-    fontSize: 10,
-    color: "#6B7280",
+
+  // ── Events widget
+  emptyEventsCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  emptyEventsText: {
+    fontSize: 13,
+    color: "#94A3B8",
     fontWeight: "500",
+  },
+  eventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  dateBadge: {
+    width: 44,
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 10,
+    paddingVertical: 6,
+    marginRight: 14,
+  },
+  dateBadgeMon: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#2563EB",
+    letterSpacing: 0.5,
+  },
+  dateBadgeDay: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1E40AF",
+    lineHeight: 22,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 3,
+  },
+  eventMeta: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontWeight: "400",
   },
 });

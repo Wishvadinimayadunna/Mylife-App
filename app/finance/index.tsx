@@ -525,15 +525,17 @@ export default function FinanceScreen() {
           </View>
         </ScrollView>
 
-        {/* Add Transaction Modal */}
+        {/* Add / Edit Modal */}
         <Modal
           visible={isModalVisible}
           animationType="slide"
           presentationStyle="pageSheet"
           onRequestClose={() => setIsModalVisible(false)}
         >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContainer, { backgroundColor: transactionType === "income" ? "#F0FDF4" : "#FFF5F5" }]}>
+
+            {/* Header */}
+            <View style={[styles.modalHeader, { borderBottomColor: transactionType === "income" ? "#BBF7D0" : "#FECACA" }]}>
               <TouchableOpacity onPress={() => setIsModalVisible(false)}>
                 <Text style={styles.modalCancel}>Cancel</Text>
               </TouchableOpacity>
@@ -541,97 +543,92 @@ export default function FinanceScreen() {
                 {editingTransaction ? "Edit" : "Add"} {transactionType === "income" ? "Income" : "Expense"}
               </Text>
               <TouchableOpacity onPress={handleSaveTransaction}>
-                <Text style={styles.modalSave}>{editingTransaction ? "Save" : "Add"}</Text>
+                <Text style={[styles.modalSave, { color: transactionType === "income" ? "#10B981" : "#EF4444" }]}>
+                  {editingTransaction ? "Save" : "Add"}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
-              {/* Type Toggle */}
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+              {/* Income / Expense Toggle */}
               <View style={styles.typeToggle}>
                 <TouchableOpacity
-                  style={[styles.typeButton, transactionType === "income" && styles.typeButtonActive]}
-                  onPress={() => { setTransactionType("income"); setIncomeCategory("Salary"); }}
+                  style={[styles.typeButton, transactionType === "income" && styles.typeButtonIncomeActive]}
+                  onPress={() => { setTransactionType("income"); setIncomeCategory("Salary"); setAmount(""); }}
                 >
-                  <Text style={[styles.typeButtonText, transactionType === "income" && styles.typeButtonTextActive]}>Income</Text>
+                  <Text style={[styles.typeButtonText, transactionType === "income" && styles.typeButtonTextActive]}>💚 Income</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.typeButton, transactionType === "expense" && styles.typeButtonActive]}
-                  onPress={() => { setTransactionType("expense"); setExpenseCategory("Food"); }}
+                  style={[styles.typeButton, transactionType === "expense" && styles.typeButtonExpenseActive]}
+                  onPress={() => { setTransactionType("expense"); setExpenseCategory("Food"); setAmount(""); }}
                 >
-                  <Text style={[styles.typeButtonText, transactionType === "expense" && styles.typeButtonTextActive]}>Expense</Text>
+                  <Text style={[styles.typeButtonText, transactionType === "expense" && styles.typeButtonTextActive]}>❤️ Expense</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Amount */}
-              <View style={styles.amountSection}>
-                <Text style={styles.currencySymbol}>Rs.</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={amount}
-                  onChangeText={setAmount}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  autoFocus
-                />
+              {/* Amount Display Card */}
+              <View style={[styles.amountDisplayCard, { borderColor: transactionType === "income" ? "#10B981" : "#EF4444" }]}>
+                <Text style={styles.amountCatEmoji}>
+                  {transactionType === "income" ? INCOME_EMOJI[incomeCategory] : EXPENSE_EMOJI[expenseCategory]}
+                </Text>
+                <View style={styles.amountDisplayRight}>
+                  <Text style={styles.amountCatLabel}>
+                    {transactionType === "income" ? incomeCategory : expenseCategory}
+                  </Text>
+                  <View style={styles.amountInputRow}>
+                    <Text style={[styles.amountCurrencyLabel, { color: transactionType === "income" ? "#10B981" : "#EF4444" }]}>Rs.</Text>
+                    <TextInput
+                      style={[styles.amountDisplayInput, { color: transactionType === "income" ? "#10B981" : "#EF4444" }]}
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="0"
+                      placeholderTextColor="#D1D5DB"
+                      keyboardType="numeric"
+                      autoFocus
+                    />
+                  </View>
+                </View>
               </View>
 
-              {/* Category */}
+              {/* Category Grid */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Category</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.categoryRow}>
-                    {(transactionType === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((cat) => {
-                      const isActive = transactionType === "income"
-                        ? incomeCategory === cat
-                        : expenseCategory === cat;
-                      const emoji = transactionType === "income"
-                        ? INCOME_EMOJI[cat as IncomeCategoryType]
-                        : EXPENSE_EMOJI[cat as ExpenseCategoryType];
-                      return (
-                        <TouchableOpacity
-                          key={cat}
-                          style={[styles.categoryChip, isActive && styles.categoryChipActive]}
-                          onPress={() => transactionType === "income"
-                            ? setIncomeCategory(cat as IncomeCategoryType)
-                            : setExpenseCategory(cat as ExpenseCategoryType)
-                          }
-                        >
-                          <Text style={styles.categoryChipEmoji}>{emoji}</Text>
-                          <Text style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}>{cat}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                <View style={styles.categoryGrid}>
+                  {(transactionType === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((cat) => {
+                    const isActive = transactionType === "income" ? incomeCategory === cat : expenseCategory === cat;
+                    const emoji = transactionType === "income" ? INCOME_EMOJI[cat as IncomeCategoryType] : EXPENSE_EMOJI[cat as ExpenseCategoryType];
+                    const activeColor = transactionType === "income" ? "#10B981" : "#EF4444";
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.categoryGridItem, isActive && { borderColor: activeColor, backgroundColor: activeColor + "18" }]}
+                        onPress={() => transactionType === "income" ? setIncomeCategory(cat as IncomeCategoryType) : setExpenseCategory(cat as ExpenseCategoryType)}
+                      >
+                        <Text style={styles.categoryGridEmoji}>{emoji}</Text>
+                        <Text style={[styles.categoryGridText, isActive && { color: activeColor, fontWeight: "700" }]}>{cat}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
-              {/* Date */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Date</Text>
-                <TouchableOpacity
-                  style={styles.datePickerButton}
-                  onPress={() => setShowTransactionCalendar(true)}
-                >
-                  <Text style={styles.datePickerText}>
-                    {formatDateFull(transactionDate)}
-                  </Text>
-                  <Text style={styles.datePickerIcon}>📅</Text>
+              {/* Date + Notes Row */}
+              <View style={styles.dateNotesRow}>
+                <TouchableOpacity style={styles.datePill} onPress={() => setShowTransactionCalendar(true)}>
+                  <Text style={styles.datePillIcon}>📅</Text>
+                  <Text style={styles.datePillText}>{formatDate(transactionDate)}</Text>
                 </TouchableOpacity>
-              </View>
-
-              {/* Notes */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Notes (Optional)</Text>
                 <TextInput
-                  style={[styles.input, styles.textArea]}
+                  style={styles.notesInline}
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Add a note..."
-                  multiline
-                  numberOfLines={3}
+                  placeholderTextColor="#9CA3AF"
                 />
               </View>
-            </ScrollView>
+
+</ScrollView>
           </View>
         </Modal>
 
@@ -1088,4 +1085,92 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: "top",
   },
+  typeButtonIncomeActive: { backgroundColor: "#10B981" },
+  typeButtonExpenseActive: { backgroundColor: "#EF4444" },
+  // Amount display
+  amountDisplayCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    marginBottom: 20,
+    gap: 16,
+  },
+  amountCatEmoji: { fontSize: 44 },
+  amountDisplayRight: { flex: 1 },
+  amountCatLabel: { fontSize: 13, color: "#6B7280", marginBottom: 4 },
+  amountDisplayText: { fontSize: 34, fontWeight: "800", letterSpacing: -1 },
+  amountInputRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  amountCurrencyLabel: { fontSize: 22, fontWeight: "700" },
+  amountDisplayInput: { fontSize: 36, fontWeight: "800", flex: 1, padding: 0 },
+  // Category Grid
+  categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  categoryGridItem: {
+    width: "22.5%",
+    aspectRatio: 1,
+    backgroundColor: "white",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+  },
+  categoryGridEmoji: { fontSize: 24, marginBottom: 4 },
+  categoryGridText: { fontSize: 9, color: "#6B7280", textAlign: "center" },
+  // Date + Notes row
+  dateNotesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 20,
+  },
+  datePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "white",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  datePillIcon: { fontSize: 16 },
+  datePillText: { fontSize: 14, fontWeight: "600", color: "#1F2937" },
+  notesInline: {
+    flex: 1,
+    backgroundColor: "white",
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    fontSize: 14,
+    color: "#1F2937",
+  },
+  // Numpad
+  numpad: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 12,
+    marginBottom: 24,
+    gap: 8,
+  },
+  numpadRow: { flexDirection: "row", gap: 8 },
+  numpadKey: {
+    flex: 1,
+    height: 64,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  numpadKeyDelete: { backgroundColor: "#FEE2E2", borderColor: "#FECACA" },
+  numpadKeyText: { fontSize: 22, fontWeight: "600", color: "#1F2937" },
+  numpadKeyDeleteText: { color: "#EF4444", fontSize: 20 },
 });
