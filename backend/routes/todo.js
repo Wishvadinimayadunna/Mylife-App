@@ -6,19 +6,28 @@
 const express = require("express");
 const router = express.Router();
 const ToDoTask = require("../models/ToDoTask");
+const User = require("../models/User");
 const auth = require("../middleware/auth");
 
 // Apply auth middleware to all routes
 router.use(auth);
+
+// Helper — get partner's userId if linked
+async function getLinkedUserId(userId) {
+  const user = await User.findById(userId).select('linkedUserId');
+  return user?.linkedUserId || null;
+}
 
 // ============================================
 // GET ALL TASKS
 // ============================================
 router.get("/", async (req, res) => {
   try {
-    const tasks = await ToDoTask.find({ userId: req.userId }).sort({
-      createdAt: -1,
-    });
+    const linkedUserId = await getLinkedUserId(req.userId);
+    const orConditions = [{ userId: req.userId }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true });
+
+    const tasks = await ToDoTask.find({ $or: orConditions }).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (error) {
     console.error("Get tasks error:", error);
@@ -31,10 +40,11 @@ router.get("/", async (req, res) => {
 // ============================================
 router.get("/pending", async (req, res) => {
   try {
-    const tasks = await ToDoTask.find({
-      userId: req.userId,
-      isCompleted: false,
-    }).sort({ dueDate: 1, priority: 1 });
+    const linkedUserId = await getLinkedUserId(req.userId);
+    const orConditions = [{ userId: req.userId, isCompleted: false }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true, isCompleted: false });
+
+    const tasks = await ToDoTask.find({ $or: orConditions }).sort({ dueDate: 1, priority: 1 });
     res.json(tasks);
   } catch (error) {
     console.error("Get pending tasks error:", error);

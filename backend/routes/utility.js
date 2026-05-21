@@ -6,8 +6,15 @@
 const express = require("express");
 const authMiddleware = require("../middleware/auth");
 const UtilityBill = require("../models/UtilityBill");
+const User = require("../models/User");
 
 const router = express.Router();
+
+// Helper — get partner's userId if linked
+async function getLinkedUserId(userId) {
+  const user = await User.findById(userId).select('linkedUserId');
+  return user?.linkedUserId || null;
+}
 
 // ============================================
 // UTILITY BILLS CRUD
@@ -16,9 +23,11 @@ const router = express.Router();
 // Get all utility bills
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const bills = await UtilityBill.find({ userId: req.userId }).sort({
-      dueDate: 1,
-    });
+    const linkedUserId = await getLinkedUserId(req.userId);
+    const orConditions = [{ userId: req.userId }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true });
+
+    const bills = await UtilityBill.find({ $or: orConditions }).sort({ dueDate: 1 });
     res.json(bills);
   } catch (error) {
     console.error("Get utility bills error:", error);
@@ -29,10 +38,11 @@ router.get("/", authMiddleware, async (req, res) => {
 // Get unpaid bills
 router.get("/unpaid", authMiddleware, async (req, res) => {
   try {
-    const bills = await UtilityBill.find({
-      userId: req.userId,
-      isPaid: false,
-    }).sort({ dueDate: 1 });
+    const linkedUserId = await getLinkedUserId(req.userId);
+    const orConditions = [{ userId: req.userId, isPaid: false }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true, isPaid: false });
+
+    const bills = await UtilityBill.find({ $or: orConditions }).sort({ dueDate: 1 });
     res.json(bills);
   } catch (error) {
     console.error("Get unpaid bills error:", error);

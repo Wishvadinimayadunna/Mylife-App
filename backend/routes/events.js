@@ -4,9 +4,16 @@
 
 const express = require("express");
 const FutureEvent = require("../models/FutureEvent");
+const User = require("../models/User");
 const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
+
+// Helper — get partner's userId if linked
+async function getLinkedUserId(userId) {
+  const user = await User.findById(userId).select('linkedUserId');
+  return user?.linkedUserId || null;
+}
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -18,11 +25,15 @@ router.use(authMiddleware);
 router.get("/", async (req, res) => {
   try {
     const { type, upcoming, completed, past } = req.query;
-    const filter = { userId: req.userId };
+    const linkedUserId = await getLinkedUserId(req.userId);
 
+    // Build $or: own events + partner's shared events
+    const orConditions = [{ userId: req.userId }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true });
+
+    const filter = { $or: orConditions };
     if (type) filter.type = type;
 
-    // Filter by status
     if (upcoming === "true") {
       const now = new Date();
       now.setHours(0, 0, 0, 0);

@@ -11,6 +11,7 @@ import todoService from "@/services/todoService";
 import utilityService from "@/services/utilityService";
 import { useAppStore } from "@/store/appStore";
 import { FutureEvent } from "@/types";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -28,7 +29,7 @@ const SECTIONS = [
   {
     id: "profile",
     name: "Profile",
-    emoji: "👤",
+    icon: "account-circle-outline" as const,
     color: "#4F46E5",
     bg: "#EEF2FF",
     route: "/profile",
@@ -37,7 +38,7 @@ const SECTIONS = [
   {
     id: "family",
     name: "Family",
-    emoji: "👨‍👩‍👧‍👦",
+    icon: "account-group-outline" as const,
     color: "#2563EB",
     bg: "#DBEAFE",
     route: "/family",
@@ -46,7 +47,7 @@ const SECTIONS = [
   {
     id: "shopping",
     name: "Shopping",
-    emoji: "🛒",
+    icon: "cart-outline" as const,
     color: "#0D9488",
     bg: "#CCFBF1",
     route: "/shopping",
@@ -55,7 +56,7 @@ const SECTIONS = [
   {
     id: "health",
     name: "Health",
-    emoji: "❤️",
+    icon: "heart-pulse" as const,
     color: "#DC2626",
     bg: "#FEE2E2",
     route: "/health",
@@ -64,7 +65,7 @@ const SECTIONS = [
   {
     id: "utility",
     name: "Utility",
-    emoji: "💡",
+    icon: "lightning-bolt-outline" as const,
     color: "#D97706",
     bg: "#FEF3C7",
     route: "/utility",
@@ -73,7 +74,7 @@ const SECTIONS = [
   {
     id: "todo",
     name: "To-Do",
-    emoji: "✅",
+    icon: "checkbox-marked-circle-outline" as const,
     color: "#16A34A",
     bg: "#DCFCE7",
     route: "/todo",
@@ -82,7 +83,7 @@ const SECTIONS = [
   {
     id: "finance",
     name: "Finance",
-    emoji: "💰",
+    icon: "wallet-outline" as const,
     color: "#F97316",
     bg: "#FFEDD5",
     route: "/finance",
@@ -91,7 +92,7 @@ const SECTIONS = [
   {
     id: "future-event",
     name: "Events",
-    emoji: "📅",
+    icon: "calendar-month-outline" as const,
     color: "#DB2777",
     bg: "#FCE7F3",
     route: "/future-event",
@@ -298,7 +299,11 @@ export default function HomeScreen() {
               >
                 {/* Colored icon box — left */}
                 <View style={[styles.cardIcon, { backgroundColor: s.bg }]}>
-                  <Text style={styles.cardEmoji}>{s.emoji}</Text>
+                  <MaterialCommunityIcons
+                    name={s.icon}
+                    size={22}
+                    color={s.color}
+                  />
                 </View>
 
                 {/* Name + sub-label stacked — right */}
@@ -423,6 +428,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+
   // ── Stat chips
   chipRow: {
     flexDirection: "row",
@@ -493,20 +499,18 @@ const styles = StyleSheet.create({
     marginRight: 10,
     flexShrink: 0,
   },
-  cardEmoji: {
-    fontSize: 20,
-  },
+  // cardEmoji removed — now using MaterialCommunityIcons vector component
   cardTextBlock: {
     flex: 1,
   },
   cardName: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
     color: "#1E293B",
     marginBottom: 2,
   },
   cardSub: {
-    fontSize: 11,
+    fontSize: 13,
     color: "#94A3B8",
     fontWeight: "400",
   },

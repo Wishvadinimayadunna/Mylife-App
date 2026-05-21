@@ -183,14 +183,97 @@ router.post(
 // ============================================
 router.get("/me", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select("-password");
+    const user = await User.findById(req.userId)
+      .select("-password")
+      .populate("linkedUserId", "email fullName");
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    res.json(user);
+
+    // Flatten linkedUser info into response for easy frontend use
+    const userData = user.toObject();
+    if (userData.linkedUserId && typeof userData.linkedUserId === "object") {
+      userData.linkedEmail = userData.linkedUserId.email;
+      userData.linkedFullName = userData.linkedUserId.fullName;
+      userData.linkedUserId = userData.linkedUserId._id;
+    }
+
+    res.json(userData);
   } catch (error) {
     console.error("Get user error:", error);
     res.status(500).json({ error: "Failed to get user" });
+  }
+});
+
+
+// ============================================
+// LINK PARTNER ACCOUNT
+// POST /api/auth/link-partner
+// Body: { partnerEmail: "partner@example.com" }
+// ============================================
+router.post("/link-partner", authMiddleware, async (req, res) => {
+  try {
+    const { partnerEmail } = req.body;
+    if (!partnerEmail) {
+      return res.status(400).json({ error: "Partner email is required" });
+    }
+
+    // Cannot link to yourself
+    const currentUser = await User.findById(req.userId);
+    if (!currentUser) return res.status(404).json({ error: "User not found" });
+    if (currentUser.email === partnerEmail.toLowerCase().trim()) {
+      return res.status(400).json({ error: "You cannot link with yourself" });
+    }
+
+    // Find the partner
+    const partner = await User.findOne({ email: partnerEmail.toLowerCase().trim() });
+    if (!partner) {
+      return res.status(404).json({ error: "No account found with that email" });
+    }
+
+    // Link both accounts to each other
+    currentUser.linkedUserId = partner._id;
+    partner.linkedUserId = currentUser._id;
+
+    await currentUser.save();
+    await partner.save();
+
+    res.json({
+      message: `Successfully linked with ${partner.fullName || partner.email}`,
+      linkedUser: {
+        id: partner._id,
+        email: partner.email,
+        fullName: partner.fullName,
+      },
+    });
+  } catch (error) {
+    console.error("Link partner error:", error);
+    res.status(500).json({ error: "Failed to link partner" });
+  }
+});
+
+// ============================================
+// UNLINK PARTNER ACCOUNT
+// POST /api/auth/unlink-partner
+// ============================================
+router.post("/unlink-partner", authMiddleware, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.userId);
+    if (!currentUser) return res.status(404).json({ error: "User not found" });
+
+    // Unlink the partner too
+    if (currentUser.linkedUserId) {
+      await User.findByIdAndUpdate(currentUser.linkedUserId, { linkedUserId: null });
+    }
+
+    currentUser.linkedUserId = null;
+    await currentUser.save();
+
+    res.json({ message: "Partner unlinked successfully" });
+  } catch (error) {
+    console.error("Unlink partner error:", error);
+    res.status(500).json({ error: "Failed to unlink partner" });
   }
 });
 
