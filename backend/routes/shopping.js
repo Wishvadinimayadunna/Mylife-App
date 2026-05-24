@@ -4,9 +4,16 @@
 
 const express = require('express');
 const ShoppingItem = require('../models/ShoppingItem');
+const User = require('../models/User');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
+
+// Helper — get partner's userId if linked
+async function getLinkedUserId(userId) {
+  const user = await User.findById(userId).select('linkedUserId');
+  return user?.linkedUserId || null;
+}
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -18,11 +25,16 @@ router.use(authMiddleware);
 router.get('/', async (req, res) => {
   try {
     const { type, bought } = req.query;
-    const filter = { userId: req.userId };
-    
+    const linkedUserId = await getLinkedUserId(req.userId);
+
+    // Build $or query: own items + partner's shared items
+    const orConditions = [{ userId: req.userId }];
+    if (linkedUserId) orConditions.push({ userId: linkedUserId, isShared: true });
+
+    const filter = { $or: orConditions };
     if (type) filter.type = type;
     if (bought !== undefined) filter.isBought = bought === 'true';
-    
+
     const items = await ShoppingItem.find(filter).sort({ createdAt: -1 });
     res.json(items);
   } catch (error) {

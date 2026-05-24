@@ -101,3 +101,53 @@ export const getCurrentUserId = async (): Promise<string | null> => {
     return null;
   }
 };
+
+// ============================================
+// Link Partner Account
+// ============================================
+export const linkPartner = async (
+  partnerEmail: string,
+): Promise<{ message: string; linkedUser: { id: string; email: string; fullName: string } }> => {
+  try {
+    const response = await api.post("/auth/link-partner", { partnerEmail });
+    return response.data;
+  } catch (error: any) {
+    const message =
+      error.response?.data?.error || "Failed to link partner";
+    throw new Error(message);
+  }
+};
+
+// ============================================
+// Unlink Partner Account
+// ============================================
+export const unlinkPartner = async (): Promise<void> => {
+  try {
+    await api.post("/auth/unlink-partner");
+  } catch (error: any) {
+    const message =
+      error.response?.data?.error || "Failed to unlink partner";
+    throw new Error(message);
+  }
+};
+
+// ============================================
+// Get Linked Partner Info (from /auth/me)
+// ============================================
+export const getLinkedUser = async (): Promise<{
+  id: string; email: string; fullName: string;
+} | null> => {
+  try {
+    const response = await api.get("/auth/me");
+    const user = response.data;
+    if (!user.linkedUserId) return null;
+    // Fetch partner details
+    const partnerRes = await api.get(`/auth/me`); // reuse token — partner info is embedded
+    return user.linkedUserId
+      ? { id: user.linkedUserId, email: "", fullName: "" }
+      : null;
+  } catch {
+    return null;
+  }
+};
+

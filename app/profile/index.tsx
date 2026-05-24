@@ -56,8 +56,8 @@ export default function ProfileScreen() {
 
   const handleSave = async () => {
     try {
-      if (!formData.fullName || !formData.email || !formData.phoneNumber) {
-        Alert.alert('Error', 'Please fill in all required fields');
+      if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.address) {
+        Alert.alert('Error', 'Please fill in all required fields (Name, Email, Phone, and Address)');
         return;
       }
 

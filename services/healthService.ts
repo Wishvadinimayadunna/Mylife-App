@@ -1,6 +1,7 @@
 // ============================================
 // Health Service
-// Medical appointments, medicine reminders, health records, emergency contacts
+// Appointments, Medication, Vitals, Emergency Contacts,
+// Mood, Symptoms, Period
 // ============================================
 
 import {
@@ -8,6 +9,9 @@ import {
     HealthRecord,
     MedicalAppointment,
     MedicineReminder,
+    MoodRecord,
+    PeriodRecord,
+    SymptomRecord,
 } from "@/types";
 import apiClient from "@/utils/api";
 
@@ -26,9 +30,7 @@ const healthService = {
     }
   },
 
-  async addAppointment(
-    data: Omit<MedicalAppointment, "id" | "createdAt" | "updatedAt">,
-  ): Promise<MedicalAppointment> {
+  async addAppointment(data: Omit<MedicalAppointment, "id" | "createdAt" | "updatedAt">): Promise<MedicalAppointment> {
     try {
       const response = await apiClient.post("/health/appointments", data);
       return response.data;
@@ -38,10 +40,7 @@ const healthService = {
     }
   },
 
-  async updateAppointment(
-    id: string,
-    data: Partial<MedicalAppointment>,
-  ): Promise<MedicalAppointment> {
+  async updateAppointment(id: string, data: Partial<MedicalAppointment>): Promise<MedicalAppointment> {
     try {
       const response = await apiClient.put(`/health/appointments/${id}`, data);
       return response.data;
@@ -74,9 +73,7 @@ const healthService = {
     }
   },
 
-  async addMedicineReminder(
-    data: Omit<MedicineReminder, "id" | "createdAt" | "updatedAt">,
-  ): Promise<MedicineReminder> {
+  async addMedicineReminder(data: Omit<MedicineReminder, "id" | "createdAt" | "updatedAt">): Promise<MedicineReminder> {
     try {
       const response = await apiClient.post("/health/medicines", data);
       return response.data;
@@ -86,10 +83,7 @@ const healthService = {
     }
   },
 
-  async updateMedicineReminder(
-    id: string,
-    data: Partial<MedicineReminder>,
-  ): Promise<MedicineReminder> {
+  async updateMedicineReminder(id: string, data: Partial<MedicineReminder>): Promise<MedicineReminder> {
     try {
       const response = await apiClient.put(`/health/medicines/${id}`, data);
       return response.data;
@@ -109,7 +103,7 @@ const healthService = {
   },
 
   // ============================================
-  // HEALTH RECORDS
+  // HEALTH RECORDS (VITALS)
   // ============================================
 
   async getHealthRecords(): Promise<HealthRecord[]> {
@@ -122,9 +116,7 @@ const healthService = {
     }
   },
 
-  async addHealthRecord(
-    data: Omit<HealthRecord, "id" | "createdAt" | "updatedAt">,
-  ): Promise<HealthRecord> {
+  async addHealthRecord(data: Omit<HealthRecord, "id" | "createdAt" | "updatedAt">): Promise<HealthRecord> {
     try {
       const response = await apiClient.post("/health/records", data);
       return response.data;
@@ -134,10 +126,7 @@ const healthService = {
     }
   },
 
-  async updateHealthRecord(
-    id: string,
-    data: Partial<HealthRecord>,
-  ): Promise<HealthRecord> {
+  async updateHealthRecord(id: string, data: Partial<HealthRecord>): Promise<HealthRecord> {
     try {
       const response = await apiClient.put(`/health/records/${id}`, data);
       return response.data;
@@ -170,9 +159,7 @@ const healthService = {
     }
   },
 
-  async addEmergencyContact(
-    data: Omit<EmergencyContact, "id" | "createdAt" | "updatedAt">,
-  ): Promise<EmergencyContact> {
+  async addEmergencyContact(data: Omit<EmergencyContact, "id" | "createdAt" | "updatedAt">): Promise<EmergencyContact> {
     try {
       const response = await apiClient.post("/health/emergency-contacts", data);
       return response.data;
@@ -182,15 +169,9 @@ const healthService = {
     }
   },
 
-  async updateEmergencyContact(
-    id: string,
-    data: Partial<EmergencyContact>,
-  ): Promise<EmergencyContact> {
+  async updateEmergencyContact(id: string, data: Partial<EmergencyContact>): Promise<EmergencyContact> {
     try {
-      const response = await apiClient.put(
-        `/health/emergency-contacts/${id}`,
-        data,
-      );
+      const response = await apiClient.put(`/health/emergency-contacts/${id}`, data);
       return response.data;
     } catch (error) {
       console.error("Update emergency contact error:", error);
@@ -203,6 +184,135 @@ const healthService = {
       await apiClient.delete(`/health/emergency-contacts/${id}`);
     } catch (error) {
       console.error("Delete emergency contact error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // MOOD RECORDS
+  // ============================================
+
+  async getMoods(): Promise<MoodRecord[]> {
+    try {
+      const response = await apiClient.get("/health/moods");
+      return response.data;
+    } catch (error) {
+      console.error("Get moods error:", error);
+      throw error;
+    }
+  },
+
+  async addMood(data: Omit<MoodRecord, "id" | "createdAt" | "updatedAt">): Promise<MoodRecord> {
+    try {
+      const response = await apiClient.post("/health/moods", data);
+      return response.data;
+    } catch (error) {
+      console.error("Add mood error:", error);
+      throw error;
+    }
+  },
+
+  async updateMood(id: string, data: Partial<MoodRecord>): Promise<MoodRecord> {
+    try {
+      const response = await apiClient.put(`/health/moods/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error("Update mood error:", error);
+      throw error;
+    }
+  },
+
+  async deleteMood(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/health/moods/${id}`);
+    } catch (error) {
+      console.error("Delete mood error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // SYMPTOM RECORDS
+  // ============================================
+
+  async getSymptoms(): Promise<SymptomRecord[]> {
+    try {
+      const response = await apiClient.get("/health/symptoms");
+      return response.data;
+    } catch (error) {
+      console.error("Get symptoms error:", error);
+      throw error;
+    }
+  },
+
+  async addSymptom(data: Omit<SymptomRecord, "id" | "createdAt" | "updatedAt">): Promise<SymptomRecord> {
+    try {
+      const response = await apiClient.post("/health/symptoms", data);
+      return response.data;
+    } catch (error) {
+      console.error("Add symptom error:", error);
+      throw error;
+    }
+  },
+
+  async updateSymptom(id: string, data: Partial<SymptomRecord>): Promise<SymptomRecord> {
+    try {
+      const response = await apiClient.put(`/health/symptoms/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error("Update symptom error:", error);
+      throw error;
+    }
+  },
+
+  async deleteSymptom(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/health/symptoms/${id}`);
+    } catch (error) {
+      console.error("Delete symptom error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // PERIOD RECORDS
+  // ============================================
+
+  async getPeriods(): Promise<PeriodRecord[]> {
+    try {
+      const response = await apiClient.get("/health/periods");
+      return response.data;
+    } catch (error) {
+      console.error("Get periods error:", error);
+      throw error;
+    }
+  },
+
+  async addPeriod(data: Omit<PeriodRecord, "id" | "createdAt" | "updatedAt" | "isPrivate">): Promise<PeriodRecord> {
+    try {
+      const response = await apiClient.post("/health/periods", data);
+      return response.data;
+    } catch (error) {
+      console.error("Add period error:", error);
+      throw error;
+    }
+  },
+
+  async updatePeriod(id: string, data: Partial<Omit<PeriodRecord, "isPrivate">>): Promise<PeriodRecord> {
+    try {
+      const response = await apiClient.put(`/health/periods/${id}`, data);
+      return response.data;
+    } catch (error) {
+      console.error("Update period error:", error);
+      throw error;
+    }
+  },
+
+  async deletePeriod(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/health/periods/${id}`);
+    } catch (error) {
+      console.error("Delete period error:", error);
       throw error;
     }
   },

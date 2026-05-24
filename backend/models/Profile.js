@@ -34,7 +34,7 @@ const profileSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: true
+    default: ''
   },
   photoUri: {
     type: String

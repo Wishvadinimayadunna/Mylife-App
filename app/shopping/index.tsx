@@ -1,32 +1,33 @@
 // ============================================
-// Shopping Module - Shopping List Management
-// Add, edit, mark items as bought, share with family
+// Shopping Module - Premium Redesigned UX
+// Reorganized layout conforming to solid visual guidelines
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
 import shoppingService from "@/services/shoppingService";
 import { useAppStore } from "@/store/appStore";
 import {
-    ShoppingCategory,
-    ShoppingItem,
-    ShoppingItemType,
-    ShoppingPriority,
+  ShoppingCategory,
+  ShoppingItem,
+  ShoppingItemType,
+  ShoppingPriority,
 } from "@/types";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
+// Category configuration
 const CATEGORIES: ShoppingCategory[] = [
   "Groceries",
   "Household",
@@ -36,40 +37,58 @@ const CATEGORIES: ShoppingCategory[] = [
 const PRIORITIES: ShoppingPriority[] = ["High", "Medium", "Low"];
 const TYPES: ShoppingItemType[] = ["urgent", "monthly"];
 
+// Design tokens
+const COLOR_NAVY = "#1a1f36";
+const COLOR_BORDER = "#E5E7EB";
+
+const CATEGORY_COLORS = {
+  Groceries: { fill: "#E6F4F2", border: "#0D9488", text: "#0D9488" },
+  Household: { fill: "#FEF3C7", border: "#D97706", text: "#D97706" },
+  Medicine: { fill: "#FEE2E2", border: "#DC2626", text: "#DC2626" },
+  Miscellaneous: { fill: "#F3F4F6", border: "#4B5563", text: "#4B5563" },
+};
+
+const PRIORITY_COLORS = {
+  High: { dot: "#E24B4A", tint: "#FCE8E6" },
+  Medium: { dot: "#EF9F27", tint: "#FEF3E6" },
+  Low: { dot: "#639922", tint: "#EFF5E9" },
+};
+
 export default function ShoppingScreen() {
   const { profile } = useAppStore();
+  const router = useRouter();
+
+  // Navigation states
+  const [activeScreen, setActiveScreen] = useState<"main" | "add" | "templates">("main");
+  const [addMode, setAddMode] = useState<"single" | "bulk">("single");
+
+  // Core data states
   const [items, setItems] = useState<ShoppingItem[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
-  const [filterType, setFilterType] = useState<
-    "all" | "urgent" | "monthly" | "bought"
-  >("all");
+  const [filterType, setFilterType] = useState<"all" | "urgent" | "monthly" | "history">("all");
+  const [expandedGroups, setExpandedGroups] = useState<{ [groupId: string]: boolean }>({});
   const [showDueDateCalendar, setShowDueDateCalendar] = useState(false);
 
-  // Bulk Add feature
-  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
-  const [bulkItemsText, setBulkItemsText] = useState("");
-  const [bulkAddedGroup, setBulkAddedGroup] = useState<string | null>(null);
-
-  // Templates feature
-  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
-  const [templates, setTemplates] = useState<
-    { name: string; items: string[] }[]
-  >([]);
-  const [newTemplateName, setNewTemplateName] = useState("");
-  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
-
-  // Form state
+  // Single Add form state
+  const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "Groceries" as ShoppingCategory,
     type: "urgent" as ShoppingItemType,
     priority: "Medium" as ShoppingPriority,
     dueDate: "",
-    reminderTime: "",
     isShared: false,
   });
 
+  // Bulk Add state
+  const [bulkItemsText, setBulkItemsText] = useState("");
+  const [parsedBulkPreview, setParsedBulkPreview] = useState<{ name: string; category: ShoppingCategory }[]>([]);
+
+  // Templates state
+  const [templates, setTemplates] = useState<{ name: string; items: string[]; saveDate: string }[]>([]);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+
+  // Loading items
   useEffect(() => {
     loadShoppingItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,116 +100,84 @@ export default function ShoppingScreen() {
     setItems(data);
   };
 
-  // Auto-categorize based on item name
+  // Helper keyword categorization matcher
   const autoCategorizeItem = (itemName: string): ShoppingCategory => {
     const name = itemName.toLowerCase();
-
-    // Groceries keywords
-    if (
-      name.match(
-        /milk|bread|egg|butter|cheese|meat|chicken|fish|vegetable|fruit|rice|flour|sugar|salt|oil|pasta|cereal/i,
-      )
-    ) {
+    if (name.match(/milk|bread|egg|butter|cheese|meat|chicken|fish|vegetable|fruit|rice|flour|sugar|salt|oil|pasta|cereal|apple|banana|berry|vegetables|juice|soda|coffee|tea|snacks|snack|spices/i)) {
       return "Groceries";
     }
-
-    // Medicine keywords
-    if (
-      name.match(
-        /medicine|tablet|pill|syrup|aspirin|paracetamol|antibiotic|vitamin|bandage|cream|ointment/i,
-      )
-    ) {
-      return "Medicine";
-    }
-
-    // Household keywords
-    if (
-      name.match(
-        /soap|shampoo|detergent|cleaner|tissue|towel|broom|mop|bulb|battery|brush/i,
-      )
-    ) {
+    if (name.match(/soap|shampoo|detergent|cleaner|tissue|towel|broom|mop|bulb|battery|brush|sponge|plate|napkin|cup|trash/i)) {
       return "Household";
     }
-
+    if (name.match(/medicine|tablet|pill|syrup|aspirin|paracetamol|antibiotic|vitamin|bandage|cream|ointment|cough|allergy|first aid/i)) {
+      return "Medicine";
+    }
     return "Miscellaneous";
   };
 
-  // Process bulk items from text
-  const processBulkItems = async (text: string) => {
-    if (!profile) return;
+  // Run auto categorization dynamically as user types name input
+  const handleNameChange = (text: string) => {
+    const matchedCategory = autoCategorizeItem(text);
+    setFormData((prev) => ({
+      ...prev,
+      name: text,
+      category: text.trim().length > 0 ? matchedCategory : prev.category,
+    }));
+  };
 
-    // Split by comma, "and", or new lines
+  // Live bulk text parser as user types
+  const handleBulkTextChange = (text: string) => {
+    setBulkItemsText(text);
+    if (!text.trim()) {
+      setParsedBulkPreview([]);
+      return;
+    }
+
     const itemNames = text
       .split(/[,\n]|\sand\s/i)
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
 
-    if (itemNames.length === 0) {
-      Alert.alert("Error", "No items found");
-      return;
-    }
+    const previews = itemNames.map((name) => ({
+      name,
+      category: autoCategorizeItem(name),
+    }));
+
+    setParsedBulkPreview(previews);
+  };
+
+  // Submit bulk items to backend
+  const handleBulkSubmit = async () => {
+    if (!profile || parsedBulkPreview.length === 0) return;
 
     try {
-      // Create a unique group ID for this bulk add
       const groupId = `bulk_${Date.now()}`;
-      setBulkAddedGroup(groupId);
-
-      // Add all items with the same groupId
-      for (const itemName of itemNames) {
+      for (const item of parsedBulkPreview) {
         await shoppingService.addShoppingItem({
           profileID: profile.id,
-          name: itemName,
-          category: autoCategorizeItem(itemName),
+          name: item.name,
+          category: item.category,
           type: "urgent",
           priority: "Medium",
           isShared: false,
           groupId: groupId,
         });
       }
-
-      Alert.alert("Success", `Added ${itemNames.length} items in one group!`);
+      Alert.alert("Success", `Added ${parsedBulkPreview.length} items to your list!`);
+      setBulkItemsText("");
+      setParsedBulkPreview([]);
+      setActiveScreen("main");
       loadShoppingItems();
-    } catch (error) {
-      console.error("Bulk add error:", error);
-      Alert.alert("Error", "Failed to add some items");
+    } catch (err) {
+      console.error("Bulk add error:", err);
+      Alert.alert("Error", "Failed to add bulk items");
     }
   };
 
-  // Bulk Add Modal Handler
-  const handleBulkAdd = () => {
-    setShowBulkAddModal(true);
-    setBulkItemsText("");
-  };
-
-  const handleBulkAddSave = async () => {
-    if (!bulkItemsText.trim()) {
-      Alert.alert("Error", "Please enter at least one item");
-      return;
-    }
-
-    await processBulkItems(bulkItemsText);
-    setShowBulkAddModal(false);
-    setBulkItemsText("");
-  };
-
-  const openEditModal = (item: ShoppingItem) => {
-    setEditingItem(item);
-    setFormData({
-      name: item.name,
-      category: item.category,
-      type: item.type,
-      priority: item.priority || "Medium",
-      dueDate: item.dueDate ? formatDateToInput(item.dueDate) : "",
-      reminderTime: item.reminderTime || "",
-      isShared: item.isShared,
-    });
-    setIsModalVisible(true);
-  };
-
-  const handleSave = async () => {
+  // Submit single item add/edit to backend
+  const handleSingleSubmit = async () => {
     if (!profile) return;
-
-    if (!formData.name) {
+    if (!formData.name.trim()) {
       Alert.alert("Error", "Please enter item name");
       return;
     }
@@ -203,7 +190,6 @@ export default function ShoppingScreen() {
           type: formData.type,
           priority: formData.priority,
           dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
-          reminderTime: formData.reminderTime || undefined,
           isShared: formData.isShared,
         });
         Alert.alert("Success", "Item updated successfully!");
@@ -215,60 +201,84 @@ export default function ShoppingScreen() {
           type: formData.type,
           priority: formData.priority,
           dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
-          reminderTime: formData.reminderTime || undefined,
           isShared: formData.isShared,
         });
         Alert.alert("Success", "Item added successfully!");
       }
 
-      setIsModalVisible(false);
+      setFormData({
+        name: "",
+        category: "Groceries",
+        type: "urgent",
+        priority: "Medium",
+        dueDate: "",
+        isShared: false,
+      });
+      setEditingItem(null);
+      setActiveScreen("main");
       loadShoppingItems();
-    } catch {
+    } catch (err) {
+      console.error("Single submit error:", err);
       Alert.alert("Error", "Failed to save item");
     }
   };
 
-  const handleDelete = async (itemId: string) => {
+  // Trigger item editing
+  const handleStartEdit = (item: ShoppingItem) => {
+    setEditingItem(item);
+    setFormData({
+      name: item.name,
+      category: item.category,
+      type: item.type,
+      priority: item.priority || "Medium",
+      dueDate: item.dueDate ? new Date(item.dueDate).toISOString().split("T")[0] : "",
+      isShared: item.isShared,
+    });
+    setAddMode("single");
+    setActiveScreen("add");
+  };
+
+  // Toggle item purchase checkbox state
+  const handleToggleBought = async (itemId: string, currentStatus: boolean) => {
+    const success = await shoppingService.markItemAsBought(itemId, !currentStatus);
+    if (success) {
+      loadShoppingItems();
+    }
+  };
+
+  // Toggle sharing status
+  const handleToggleShare = async (itemId: string, currentStatus: boolean) => {
+    const success = await shoppingService.shareShoppingList(itemId, !currentStatus);
+    if (success) {
+      loadShoppingItems();
+    }
+  };
+
+  // Delete shopping item
+  const handleDelete = (itemId: string) => {
     Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          try {
-            const success = await shoppingService.deleteShoppingItem(itemId);
-            if (success) {
-              Alert.alert("Success", "Item deleted");
-              loadShoppingItems();
-            } else {
-              Alert.alert("Error", "Failed to delete item");
-            }
-          } catch (error) {
-            console.error("Delete error:", error);
-            Alert.alert("Error", "Failed to delete item");
+          const success = await shoppingService.deleteShoppingItem(itemId);
+          if (success) {
+            loadShoppingItems();
           }
         },
       },
     ]);
   };
 
-  const handleToggleBought = async (itemId: string, currentStatus: boolean) => {
-    await shoppingService.markItemAsBought(itemId, !currentStatus);
-    loadShoppingItems();
-  };
-
-  const handleToggleShare = async (itemId: string, currentStatus: boolean) => {
-    await shoppingService.shareShoppingList(itemId, !currentStatus);
-    loadShoppingItems();
-  };
-
-  // Template Management
+  // Save current list as Template
   const handleSaveAsTemplate = () => {
     const activeItems = items.filter((item) => !item.isBought);
     if (activeItems.length === 0) {
       Alert.alert("Error", "No active items to save as template");
       return;
     }
+    setNewTemplateName("");
     setShowSaveTemplateModal(true);
   };
 
@@ -277,25 +287,30 @@ export default function ShoppingScreen() {
       Alert.alert("Error", "Please enter a template name");
       return;
     }
-
     const activeItems = items.filter((item) => !item.isBought);
     const itemNames = activeItems.map((item) => item.name);
 
     const newTemplate = {
       name: newTemplateName,
       items: itemNames,
+      saveDate: new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
     };
 
     setTemplates([...templates, newTemplate]);
     setShowSaveTemplateModal(false);
-    setNewTemplateName("");
     Alert.alert("Success", `Template "${newTemplateName}" saved!`);
   };
 
-  const loadTemplate = async (template: { name: string; items: string[] }) => {
+  // Load Saved Template
+  const handleLoadTemplate = async (template: { name: string; items: string[] }) => {
     if (!profile) return;
 
     try {
+      const groupId = `bulk_${Date.now()}`;
       for (const itemName of template.items) {
         await shoppingService.addShoppingItem({
           profileID: profile.id,
@@ -304,14 +319,11 @@ export default function ShoppingScreen() {
           type: "urgent",
           priority: "Medium",
           isShared: false,
+          groupId: groupId,
         });
       }
-
-      setShowTemplatesModal(false);
-      Alert.alert(
-        "Success",
-        `Loaded ${template.items.length} items from "${template.name}"`,
-      );
+      Alert.alert("Success", `Loaded ${template.items.length} items from "${template.name}"`);
+      setActiveScreen("main");
       loadShoppingItems();
     } catch (err) {
       console.error("Load template error:", err);
@@ -319,26 +331,34 @@ export default function ShoppingScreen() {
     }
   };
 
-  const deleteTemplate = (index: number) => {
-    Alert.alert("Delete Template", `Delete "${templates[index].name}"?`, [
+  // Delete Saved Template
+  const handleDeleteTemplate = (index: number) => {
+    Alert.alert("Delete Template", `Are you sure you want to delete "${templates[index].name}"?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          const newTemplates = templates.filter((_, i) => i !== index);
-          setTemplates(newTemplates);
+          setTemplates(templates.filter((_, i) => i !== index));
         },
       },
     ]);
   };
 
-  const formatDateToInput = (date: Date): string => {
-    const d = new Date(date);
-    return d.toISOString().split("T")[0];
+  // Collapse/Expand toggler for folder groups
+  const toggleGroupExpand = (groupId: string) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
   };
 
-  const formatDate = (date: Date | undefined) => {
+  // Helper date formatters
+  const formatDateToInput = (date: Date): string => {
+    return date.toISOString().split("T")[0];
+  };
+
+  const formatDate = (date: any) => {
     if (!date) return "";
     const d = new Date(date);
     return d.toLocaleDateString("en-US", {
@@ -348,53 +368,32 @@ export default function ShoppingScreen() {
     });
   };
 
-  // Group items by groupId
-  const groupItemsByGroupId = (items: ShoppingItem[]) => {
-    const grouped: { [key: string]: ShoppingItem[] } = {};
-    const ungrouped: ShoppingItem[] = [];
+  const formatPurchaseTime = (dateInput: any) => {
+    if (!dateInput) return "";
+    const d = new Date(dateInput);
+    const now = new Date();
 
-    items.forEach((item) => {
-      if (item.groupId) {
-        if (!grouped[item.groupId]) {
-          grouped[item.groupId] = [];
-        }
-        grouped[item.groupId].push(item);
-      } else {
-        ungrouped.push(item);
-      }
-    });
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
 
-    return { grouped, ungrouped };
-  };
-
-  const getFilteredItems = () => {
-    switch (filterType) {
-      case "urgent":
-        return items.filter((item) => item.type === "urgent" && !item.isBought);
-      case "monthly":
-        return items.filter(
-          (item) => item.type === "monthly" && !item.isBought,
-        );
-      case "bought":
-        return items.filter((item) => item.isBought);
-      default:
-        return items;
+    if (isToday) {
+      return d.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
     }
   };
 
-  const getPriorityColor = (priority?: ShoppingPriority) => {
-    switch (priority) {
-      case "High":
-        return "#EF4444";
-      case "Medium":
-        return "#F59E0B";
-      case "Low":
-        return "#10B981";
-      default:
-        return "#6B7280";
-    }
-  };
-
+  // Category Icon Resolver
   const getCategoryIcon = (category: ShoppingCategory) => {
     switch (category) {
       case "Groceries":
@@ -410,648 +409,713 @@ export default function ShoppingScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: ShoppingItem }) => (
-    <View style={[styles.itemCard, item.isBought && styles.itemBought]}>
-      <View style={styles.itemHeader}>
-        <TouchableOpacity
-          style={styles.checkbox}
-          onPress={() => handleToggleBought(item.id, item.isBought)}
-        >
-          {item.isBought && <View style={styles.checkboxChecked} />}
-        </TouchableOpacity>
-        <View style={styles.itemInfo}>
-          <Text
-            style={[styles.itemName, item.isBought && styles.itemNameBought]}
-          >
-            {getCategoryIcon(item.category)} {item.name}
-          </Text>
-          <View style={styles.itemTags}>
-            <View
-              style={[
-                styles.tag,
-                { backgroundColor: getPriorityColor(item.priority) },
-              ]}
-            >
-              <Text style={styles.tagText}>{item.priority}</Text>
-            </View>
-            <View style={[styles.tag, styles.typeTag]}>
-              <Text style={styles.tagText}>{item.type}</Text>
-            </View>
-            {item.isShared && (
-              <View style={[styles.tag, styles.sharedTag]}>
-                <Text style={styles.tagText}>👨‍👩‍👧 Shared</Text>
-              </View>
-            )}
-          </View>
-          {item.dueDate && (
-            <Text style={styles.dueDate}>Due: {formatDate(item.dueDate)}</Text>
-          )}
-          {item.boughtAt && (
-            <Text style={styles.boughtDate}>
-              Bought: {formatDate(item.boughtAt)}
-            </Text>
-          )}
-        </View>
-      </View>
-      <View style={styles.itemActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleToggleShare(item.id, item.isShared)}
-        >
-          <Text style={styles.actionButtonText}>
-            {item.isShared ? "🔗" : "🔓"}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => openEditModal(item)}
-        >
-          <Text style={styles.actionButtonText}>✏️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleDelete(item.id)}
-        >
-          <Text style={styles.actionButtonText}>🗑️</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  // Filter unbought items count for stats
+  const stats = {
+    urgentCount: items.filter((item) => !item.isBought && item.type === "urgent").length,
+    monthlyCount: items.filter((item) => !item.isBought && item.type === "monthly").length,
+  };
 
-  // Render a grouped card showing multiple items from bulk add
-  const renderGroupedCard = (groupId: string, groupItems: ShoppingItem[]) => {
-    const allBought = groupItems.every((item) => item.isBought);
-    const anyShared = groupItems.some((item) => item.isShared);
+  // Filter items matching active filter tabs
+  const getUnboughtFilteredItems = () => {
+    return items.filter((item) => {
+      if (item.isBought) return false;
+      if (filterType === "urgent") return item.type === "urgent";
+      if (filterType === "monthly") return item.type === "monthly";
+      return true; // "all"
+    });
+  };
+
+  // Subtitle header resolver
+  const getScreenSubtitle = () => {
+    if (activeScreen === "add") return addMode === "single" ? (editingItem ? "Edit item details" : "Add item details") : "Import multiple items";
+    if (activeScreen === "templates") return "Load or configure checklists";
+    return "Track family essentials";
+  };
+
+  // Render standard single card row
+  const renderItemCard = (item: ShoppingItem, isInsideFolder = false) => {
+    const catColors = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+    const prioColor = PRIORITY_COLORS[item.priority || "Medium"] || PRIORITY_COLORS.Medium;
 
     return (
       <View
-        style={[styles.groupedCard, allBought && styles.itemBought]}
-        key={groupId}
+        key={item.id}
+        style={[
+          styles.itemCard,
+          item.isBought && styles.itemCardBought,
+          isInsideFolder && styles.nestedFolderItem,
+        ]}
       >
-        <View style={styles.groupedHeader}>
-          <Text style={styles.groupedTitle}>
-            📦 Bulk Items ({groupItems.length})
+        {/* Left: circular checkbox */}
+        <TouchableOpacity
+          style={[styles.circularCheckbox, item.isBought && styles.circularCheckboxChecked]}
+          onPress={() => handleToggleBought(item.id, item.isBought)}
+        >
+          {item.isBought && <View style={styles.circularCheckboxInner} />}
+        </TouchableOpacity>
+
+        {/* Category color block */}
+        <View style={[styles.categorySquare, { backgroundColor: catColors.fill }]}>
+          <Text style={[styles.categorySquareEmoji, { color: catColors.text }]}>
+            {getCategoryIcon(item.category)}
           </Text>
-          {anyShared && (
-            <View style={[styles.tag, styles.sharedTag]}>
-              <Text style={styles.tagText}>👨‍👩‍👧 Shared</Text>
-            </View>
-          )}
         </View>
 
-        {groupItems.map((item) => (
-          <View key={item.id} style={styles.groupedItem}>
-            <View style={styles.groupedItemHeader}>
+        {/* Name & Subtitle */}
+        <View style={styles.itemCardMainInfo}>
+          <Text style={[styles.itemName, item.isBought && styles.itemNameBought]}>
+            {item.name}
+          </Text>
+          <View style={styles.subLabelRow}>
+            <Text style={styles.itemSublabel}>
+              {item.type.toUpperCase()}
+              {item.dueDate ? ` • Due ${formatDate(item.dueDate)}` : ""}
+            </Text>
+            {item.isShared && (
+              <View style={styles.sharedBadge}>
+                <Text style={styles.sharedBadgeText}>Shared</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Edit / Delete action indicators on Long Press or clean buttons */}
+        <View style={styles.cardActionsContainer}>
+          <TouchableOpacity onPress={() => handleToggleShare(item.id, item.isShared)} style={styles.cardActionIcon}>
+            <Text style={styles.actionIconEmoji}>{item.isShared ? "👥" : "👤"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleStartEdit(item)} style={styles.cardActionIcon}>
+            <Text style={styles.actionIconEmoji}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.cardActionIcon}>
+            <Text style={styles.actionIconEmoji}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Right: priority dot */}
+        <View style={[styles.priorityDot, { backgroundColor: prioColor.dot }]} />
+      </View>
+    );
+  };
+
+  // Render dynamic Category Stacks (Screen 1 core grouping)
+  const renderMainListCategoryGroups = () => {
+    const filteredUnboughtItems = getUnboughtFilteredItems();
+    if (filteredUnboughtItems.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>🛒</Text>
+          <Text style={styles.emptyText}>No items found</Text>
+          <Text style={styles.emptySubtext}>Use the buttons below to populate your list</Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView contentContainerStyle={styles.listScrollContent} showsVerticalScrollIndicator={false}>
+        {CATEGORIES.map((category) => {
+          const categoryItems = filteredUnboughtItems.filter((item) => item.category === category);
+          if (categoryItems.length === 0) return null;
+
+          // Separate folder items vs solo items
+          const groupedFolders: { [groupId: string]: ShoppingItem[] } = {};
+          const soloItems: ShoppingItem[] = [];
+
+          categoryItems.forEach((item) => {
+            if (item.groupId) {
+              if (!groupedFolders[item.groupId]) {
+                groupedFolders[item.groupId] = [];
+              }
+              groupedFolders[item.groupId].push(item);
+            } else {
+              soloItems.push(item);
+            }
+          });
+
+          return (
+            <View key={category} style={styles.categoryStack}>
+              {/* uppercase Category Label */}
+              <Text style={styles.categoryStackLabel}>{category.toUpperCase()}</Text>
+
+              {/* Group Folders in Category */}
+              {Object.keys(groupedFolders).map((groupId) => {
+                const groupItems = groupedFolders[groupId];
+                const isExpanded = !!expandedGroups[groupId];
+                const folderCatColors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Miscellaneous;
+
+                return (
+                  <View key={groupId} style={styles.folderCardContainer}>
+                    {/* Folder Header */}
+                    <TouchableOpacity
+                      style={styles.folderHeader}
+                      onPress={() => toggleGroupExpand(groupId)}
+                    >
+                      <View style={styles.folderHeaderLeft}>
+                        <Text style={styles.folderIcon}>📦</Text>
+                        <View style={{ marginLeft: 10 }}>
+                          <Text style={styles.folderName}>Bulk List {formatDate(groupItems[0].createdAt)}</Text>
+                          <Text style={styles.folderSubtitle}>{groupItems.length} items inside</Text>
+                        </View>
+                      </View>
+                      <View style={styles.folderHeaderRight}>
+                        <View style={[styles.itemCountBadge, { backgroundColor: folderCatColors.fill }]}>
+                          <Text style={[styles.itemCountBadgeText, { color: folderCatColors.text }]}>
+                            {groupItems.length}
+                          </Text>
+                        </View>
+                        <Text style={styles.chevronIcon}>{isExpanded ? "▲" : "▼"}</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Collapsible Children */}
+                    {isExpanded && (
+                      <View style={styles.folderItemsContainer}>
+                        {groupItems.map((childItem) => renderItemCard(childItem, true))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* Solo items */}
+              {soloItems.map((soloItem) => renderItemCard(soloItem, false))}
+            </View>
+          );
+        })}
+      </ScrollView>
+    );
+  };
+
+  // Render Screen 5: History View
+  const renderHistoryView = () => {
+    const historyItems = items
+      .filter((item) => item.isBought)
+      .sort((a, b) => {
+        if (!a.boughtAt || !b.boughtAt) return 0;
+        return new Date(b.boughtAt).getTime() - new Date(a.boughtAt).getTime();
+      });
+
+    if (historyItems.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>🕰️</Text>
+          <Text style={styles.emptyText}>Empty history</Text>
+          <Text style={styles.emptySubtext}>Purchased items will stack here</Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={historyItems}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listScrollContent}
+        renderItem={({ item }) => {
+          const catColors = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+          return (
+            <View style={[styles.itemCard, styles.itemCardBought]}>
+              {/* Checked circle */}
               <TouchableOpacity
-                style={styles.checkbox}
+                style={[styles.circularCheckbox, styles.circularCheckboxChecked]}
                 onPress={() => handleToggleBought(item.id, item.isBought)}
               >
-                {item.isBought && <View style={styles.checkboxChecked} />}
+                <View style={styles.circularCheckboxInner} />
               </TouchableOpacity>
-              <View style={styles.groupedItemInfo}>
-                <Text
-                  style={[
-                    styles.groupedItemName,
-                    item.isBought && styles.itemNameBought,
-                  ]}
-                >
-                  {getCategoryIcon(item.category)} {item.name}
+
+              {/* category square block */}
+              <View style={[styles.categorySquare, { backgroundColor: catColors.fill }]}>
+                <Text style={[styles.categorySquareEmoji, { color: catColors.text }]}>
+                  {getCategoryIcon(item.category)}
                 </Text>
-                <View style={styles.itemTags}>
-                  <View
-                    style={[
-                      styles.tag,
-                      { backgroundColor: getPriorityColor(item.priority) },
-                    ]}
-                  >
-                    <Text style={styles.tagText}>{item.priority}</Text>
-                  </View>
-                  <View style={[styles.tag, styles.typeTag]}>
-                    <Text style={styles.tagText}>{item.type}</Text>
-                  </View>
-                </View>
-                {item.dueDate && (
-                  <Text style={styles.dueDate}>
-                    Due: {formatDate(item.dueDate)}
-                  </Text>
-                )}
+              </View>
+
+              {/* main Info details */}
+              <View style={styles.itemCardMainInfo}>
+                <Text style={[styles.itemName, styles.itemNameBought]}>{item.name}</Text>
+                <Text style={styles.itemSublabel}>{item.category}</Text>
+              </View>
+
+              {/* Date/Time purchase stamp */}
+              <View style={styles.historyTimeContainer}>
+                <Text style={styles.historyTimeText}>{formatPurchaseTime(item.boughtAt)}</Text>
+                <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ marginLeft: 8 }}>
+                  <Text style={{ fontSize: 14 }}>🗑️</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.groupedItemActions}>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleToggleShare(item.id, item.isShared)}
-              >
-                <Text style={styles.actionButtonText}>
-                  {item.isShared ? "🔗" : "🔓"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => openEditModal(item)}
-              >
-                <Text style={styles.actionButtonText}>✏️</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleDelete(item.id)}
-              >
-                <Text style={styles.actionButtonText}>🗑️</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
+          );
+        }}
+      />
     );
   };
 
   return (
     <>
-      <Stack.Screen options={{ title: "Shopping List", headerShown: true }} />
-      <View style={styles.container}>
-        {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              filterType === "all" && styles.filterTabActive,
-            ]}
-            onPress={() => setFilterType("all")}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterType === "all" && styles.filterTextActive,
-              ]}
-            >
-              All ({items.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              filterType === "urgent" && styles.filterTabActive,
-            ]}
-            onPress={() => setFilterType("urgent")}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterType === "urgent" && styles.filterTextActive,
-              ]}
-            >
-              Urgent
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              filterType === "monthly" && styles.filterTabActive,
-            ]}
-            onPress={() => setFilterType("monthly")}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterType === "monthly" && styles.filterTextActive,
-              ]}
-            >
-              Monthly
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              filterType === "bought" && styles.filterTabActive,
-            ]}
-            onPress={() => setFilterType("bought")}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filterType === "bought" && styles.filterTextActive,
-              ]}
-            >
-              History
-            </Text>
-          </TouchableOpacity>
+      <Stack.Screen options={{ title: "Shopping Module", headerShown: false }} />
+
+      {/* SOLID HEADER */}
+      <View style={styles.screenHeader}>
+        <TouchableOpacity
+          style={styles.backArrowButton}
+          onPress={() => {
+            if (activeScreen !== "main") { setEditingItem(null); setActiveScreen("main"); }
+            else { router.back(); }
+          }}
+        >
+          <Text style={styles.backArrowText}>←</Text>
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitleText}>
+            {activeScreen === "main"
+              ? "Shopping Checklists"
+              : activeScreen === "add"
+              ? addMode === "single"
+                ? editingItem
+                  ? "Edit Item"
+                  : "Add Single Item"
+                : "Bulk Add Checklist"
+              : "Checklist Templates"}
+          </Text>
+          <Text style={styles.headerSubtitleText}>{getScreenSubtitle()}</Text>
         </View>
+      </View>
 
-        {/* Items List */}
-        <FlatList
-          data={(() => {
-            const filtered = getFilteredItems();
-            const { grouped, ungrouped } = groupItemsByGroupId(filtered);
+      <View style={styles.appContainer}>
+        {/* ========================================================
+            SCREEN 1 & 5: MAIN & HISTORY SCREEN
+            ======================================================== */}
+        {activeScreen === "main" && (
+          <>
+            {/* Stat chips */}
+            <View style={styles.statsContainer}>
+              <View style={styles.statChip}>
+                <View style={[styles.statIconBox, { backgroundColor: "#FCE8E6" }]}>
+                  <Text style={{ color: "#E24B4A", fontWeight: "bold" }}>🚨</Text>
+                </View>
+                <View style={styles.statChipInfo}>
+                  <Text style={styles.statChipCount}>{stats.urgentCount}</Text>
+                  <Text style={styles.statChipLabel}>Urgent items</Text>
+                </View>
+              </View>
 
-            // Create a mixed array with group markers and individual items
-            const mixedData: any[] = [];
-
-            // Add grouped items first
-            Object.keys(grouped).forEach((groupId) => {
-              mixedData.push({
-                type: "group",
-                groupId,
-                items: grouped[groupId],
-              });
-            });
-
-            // Add ungrouped items
-            ungrouped.forEach((item) => {
-              mixedData.push({
-                type: "item",
-                item,
-              });
-            });
-
-            return mixedData;
-          })()}
-          renderItem={({ item: dataItem }) => {
-            if (dataItem.type === "group") {
-              return renderGroupedCard(dataItem.groupId, dataItem.items);
-            } else {
-              return renderItem({ item: dataItem.item });
-            }
-          }}
-          keyExtractor={(dataItem, index) => {
-            if (dataItem.type === "group") {
-              return `group-${dataItem.groupId}`;
-            } else {
-              return `item-${dataItem.item.id}`;
-            }
-          }}
-          contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>🛒</Text>
-              <Text style={styles.emptyText}>No items yet</Text>
-              <Text style={styles.emptySubtext}>
-                Use the buttons below to add items
-              </Text>
+              <View style={styles.statChip}>
+                <View style={[styles.statIconBox, { backgroundColor: "#DBEAFE" }]}>
+                  <Text style={{ color: "#1D4ED8", fontWeight: "bold" }}>📅</Text>
+                </View>
+                <View style={styles.statChipInfo}>
+                  <Text style={styles.statChipCount}>{stats.monthlyCount}</Text>
+                  <Text style={styles.statChipLabel}>Monthly stock</Text>
+                </View>
+              </View>
             </View>
-          }
-        />
 
-        {/* Main Action Buttons */}
-        <View style={styles.mainActionsContainer}>
-          <View style={styles.mainActionsRow}>
-            <TouchableOpacity
-              style={styles.mainActionButton}
-              onPress={handleBulkAdd}
-            >
-              <Text style={styles.mainActionIcon}>📝</Text>
-              <Text style={styles.mainActionTitle}>Bulk Add</Text>
-              <Text style={styles.mainActionSubtitle}>Type multiple</Text>
-            </TouchableOpacity>
+            {/* Navy filter tabs */}
+            <View style={styles.filterTabsRow}>
+              {["all", "urgent", "monthly", "history"].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.filterTabButton,
+                    filterType === type && styles.filterTabButtonActive,
+                  ]}
+                  onPress={() => setFilterType(type as any)}
+                >
+                  <Text
+                    style={[
+                      styles.filterTabButtonText,
+                      filterType === type && styles.filterTabButtonTextActive,
+                    ]}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-            <TouchableOpacity
-              style={styles.mainActionButton}
-              onPress={() => setShowTemplatesModal(true)}
-            >
-              <Text style={styles.mainActionIcon}>📋</Text>
-              <Text style={styles.mainActionTitle}>Templates</Text>
-              <Text style={styles.mainActionSubtitle}>Load saved lists</Text>
-            </TouchableOpacity>
-          </View>
+            {/* List stacks content */}
+            <View style={{ flex: 1 }}>
+              {filterType === "history" ? renderHistoryView() : renderMainListCategoryGroups()}
+            </View>
 
-          <View style={styles.mainActionsRow}>
-            <TouchableOpacity
-              style={styles.mainActionButton}
-              onPress={handleSaveAsTemplate}
-            >
-              <Text style={styles.mainActionIcon}>💾</Text>
-              <Text style={styles.mainActionTitle}>Save List</Text>
-              <Text style={styles.mainActionSubtitle}>As template</Text>
-            </TouchableOpacity>
+            {/* Footer Buttons (hidden in History view) */}
+            {filterType !== "history" && (
+              <View style={styles.footerOutlineRow}>
+                <TouchableOpacity
+                  style={styles.outlineFooterButton}
+                  onPress={() => {
+                    setEditingItem(null);
+                    setFormData({
+                      name: "",
+                      category: "Groceries",
+                      type: "urgent",
+                      priority: "Medium",
+                      dueDate: "",
+                      isShared: false,
+                    });
+                    setAddMode("single");
+                    setActiveScreen("add");
+                  }}
+                >
+                  <Text style={styles.outlineFooterButtonText}>➕ Add item</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.mainActionButton}
-              onPress={() => setIsModalVisible(true)}
-            >
-              <Text style={styles.mainActionIcon}>➕</Text>
-              <Text style={styles.mainActionTitle}>Add Single</Text>
-              <Text style={styles.mainActionSubtitle}>One item</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+                <TouchableOpacity
+                  style={styles.outlineFooterButton}
+                  onPress={() => setActiveScreen("templates")}
+                >
+                  <Text style={styles.outlineFooterButtonText}>📋 Templates</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
 
-        {/* Add/Edit Modal */}
-        <Modal visible={isModalVisible} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>
-                  {editingItem ? "Edit Item" : "Add Shopping Item"}
+        {/* ========================================================
+            SCREEN 2 & 3: ADD SCREENS (SINGLE & BULK MODE SWITCHER)
+            ======================================================== */}
+        {activeScreen === "add" && (
+          <ScrollView contentContainerStyle={styles.addScreenScroll} showsVerticalScrollIndicator={false}>
+            {/* Mode Switcher */}
+            <View style={styles.switcherContainer}>
+              <TouchableOpacity
+                style={[styles.switcherTab, addMode === "single" && styles.switcherTabActive]}
+                onPress={() => setAddMode("single")}
+              >
+                <Text style={[styles.switcherTabText, addMode === "single" && styles.switcherTabTextActive]}>
+                  Single Mode
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.switcherTab, addMode === "bulk" && styles.switcherTabActive]}
+                onPress={() => setAddMode("bulk")}
+              >
+                <Text style={[styles.switcherTabText, addMode === "bulk" && styles.switcherTabTextActive]}>
+                  Bulk Add
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-                <Text style={styles.label}>Item Name *</Text>
+            {/* ----------------------------------------------------
+                SCREEN 2: SINGLE ADD MODE
+                ---------------------------------------------------- */}
+            {addMode === "single" && (
+              <View style={styles.formContainer}>
+                {/* 1. Item Name Input */}
+                <Text style={styles.formLabel}>Item Name</Text>
                 <TextInput
-                  style={styles.input}
+                  style={styles.formTextInput}
                   value={formData.name}
-                  onChangeText={(text) =>
-                    setFormData({ ...formData, name: text })
-                  }
-                  placeholder="e.g., Milk, Bread"
+                  onChangeText={handleNameChange}
+                  placeholder="e.g. Milk, Apples, Ibuprofen"
+                  placeholderTextColor="#999"
                 />
 
-                <Text style={styles.label}>Category</Text>
-                <View style={styles.buttonGroup}>
-                  {CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        styles.optionButton,
-                        formData.category === cat && styles.optionButtonActive,
-                      ]}
-                      onPress={() =>
-                        setFormData({ ...formData, category: cat })
-                      }
-                    >
-                      <Text
+                {/* 2. Category selection pill chips */}
+                <Text style={styles.formLabel}>Category</Text>
+                <View style={styles.pillChipGrid}>
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = formData.category === cat;
+                    const catColors = CATEGORY_COLORS[cat];
+                    return (
+                      <TouchableOpacity
+                        key={cat}
                         style={[
-                          styles.optionText,
-                          formData.category === cat && styles.optionTextActive,
+                          styles.pillChip,
+                          isSelected && {
+                            backgroundColor: catColors.fill,
+                            borderColor: catColors.border,
+                          },
                         ]}
+                        onPress={() => setFormData({ ...formData, category: cat })}
                       >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.pillChipText,
+                            isSelected && { color: catColors.text, fontWeight: "bold" },
+                          ]}
+                        >
+                          {getCategoryIcon(cat)} {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <Text style={styles.label}>Type</Text>
-                <View style={styles.buttonGroup}>
-                  {TYPES.map((type) => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[
-                        styles.optionButton,
-                        formData.type === type && styles.optionButtonActive,
-                      ]}
-                      onPress={() => setFormData({ ...formData, type })}
-                    >
-                      <Text
+                {/* 3. Type selector */}
+                <Text style={styles.formLabel}>Type</Text>
+                <View style={styles.typeSelectorRow}>
+                  {TYPES.map((type) => {
+                    const isSelected = formData.type === type;
+                    return (
+                      <TouchableOpacity
+                        key={type}
                         style={[
-                          styles.optionText,
-                          formData.type === type && styles.optionTextActive,
+                          styles.typeButton,
+                          isSelected && styles.typeButtonActive,
                         ]}
+                        onPress={() => setFormData({ ...formData, type })}
                       >
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            isSelected && styles.typeButtonTextActive,
+                          ]}
+                        >
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <Text style={styles.label}>Priority</Text>
-                <View style={styles.buttonGroup}>
-                  {PRIORITIES.map((priority) => (
-                    <TouchableOpacity
-                      key={priority}
-                      style={[
-                        styles.optionButton,
-                        formData.priority === priority &&
-                          styles.optionButtonActive,
-                      ]}
-                      onPress={() => setFormData({ ...formData, priority })}
-                    >
-                      <Text
+                {/* 4. Priority selector */}
+                <Text style={styles.formLabel}>Priority</Text>
+                <View style={styles.prioritySelectorRow}>
+                  {PRIORITIES.map((prio) => {
+                    const isSelected = formData.priority === prio;
+                    const colorTokens = PRIORITY_COLORS[prio as "High" | "Medium" | "Low"];
+                    return (
+                      <TouchableOpacity
+                        key={prio}
                         style={[
-                          styles.optionText,
-                          formData.priority === priority &&
-                            styles.optionTextActive,
+                          styles.priorityButton,
+                          isSelected && {
+                            backgroundColor: colorTokens.tint,
+                            borderColor: colorTokens.dot,
+                          },
                         ]}
+                        onPress={() => setFormData({ ...formData, priority: prio as any })}
                       >
-                        {priority}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <View style={[styles.prioBtnDot, { backgroundColor: colorTokens.dot }]} />
+                        <Text
+                          style={[
+                            styles.priorityButtonText,
+                            isSelected && { color: colorTokens.dot, fontWeight: "bold" },
+                          ]}
+                        >
+                          {prio}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
+                {/* 5. Due date picker (Urgent only) */}
                 {formData.type === "urgent" && (
-                  <>
-                    <Text style={styles.label}>Due Date (Optional)</Text>
+                  <View style={styles.datePickerContainer}>
+                    <Text style={styles.formLabel}>Due Date (Optional)</Text>
                     <TouchableOpacity
-                      style={styles.input}
+                      style={styles.datePickerField}
                       onPress={() => setShowDueDateCalendar(true)}
                     >
-                      <Text
-                        style={
-                          formData.dueDate
-                            ? styles.dateText
-                            : styles.placeholder
-                        }
-                      >
+                      <Text style={formData.dueDate ? styles.dateText : styles.placeholderDateText}>
                         {formData.dueDate
                           ? formatDate(new Date(formData.dueDate))
-                          : "Select due date"}
+                          : "Select target due date"}
                       </Text>
                     </TouchableOpacity>
-
-                    <Text style={styles.label}>Reminder Time (Optional)</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={formData.reminderTime}
-                      onChangeText={(text) =>
-                        setFormData({ ...formData, reminderTime: text })
-                      }
-                      placeholder="e.g., 18:00"
-                    />
-                  </>
+                  </View>
                 )}
 
-                <View style={styles.switchRow}>
-                  <Text style={styles.label}>Share with Family</Text>
+                {/* 6. Share Switch */}
+                <View style={styles.shareToggleRow}>
+                  <View>
+                    <Text style={styles.shareToggleTitle}>Share with family</Text>
+                    <Text style={styles.shareToggleSubtitle}>Spouse will see checklist in dashboard</Text>
+                  </View>
                   <Switch
                     value={formData.isShared}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, isShared: value })
-                    }
+                    onValueChange={(val) => setFormData({ ...formData, isShared: val })}
+                    trackColor={{ false: "#D1D5DB", true: "#A7F3D0" }}
+                    thumbColor={formData.isShared ? "#639922" : "#F3F4F6"}
                   />
                 </View>
 
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.button, styles.buttonCancel]}
-                    onPress={() => setIsModalVisible(false)}
-                  >
-                    <Text style={styles.buttonCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, styles.buttonSave]}
-                    onPress={handleSave}
-                  >
-                    <Text style={styles.buttonSaveText}>
-                      {editingItem ? "Update" : "Add Item"}
+                {/* Bottom Add button */}
+                <TouchableOpacity
+                  style={styles.fullSubmitNavyButton}
+                  onPress={handleSingleSubmit}
+                >
+                  <Text style={styles.fullSubmitNavyButtonText}>
+                    {editingItem ? "Update Item Details" : "Add to list"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ----------------------------------------------------
+                SCREEN 3: BULK ADD MODE
+                ---------------------------------------------------- */}
+            {addMode === "bulk" && (
+              <View style={styles.formContainer}>
+                <Text style={styles.formLabel}>Enter Items List</Text>
+                <TextInput
+                  style={styles.bulkTextarea}
+                  value={bulkItemsText}
+                  onChangeText={handleBulkTextChange}
+                  placeholder="Type items separated by comma, 'and', or new line.&#10;e.g. Bread, Soap and Apples"
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={8}
+                  textAlignVertical="top"
+                />
+
+                {/* Live parsed preview stack */}
+                {parsedBulkPreview.length > 0 && (
+                  <View style={styles.previewContainer}>
+                    <Text style={styles.previewHeading}>
+                      {parsedBulkPreview.length} items detected — categories auto-assigned below.
                     </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+                    <View style={styles.previewListScroll}>
+                      {parsedBulkPreview.map((item, idx) => {
+                        const colors = CATEGORY_COLORS[item.category];
+                        return (
+                          <View key={idx} style={styles.previewRow}>
+                            <View style={styles.previewRowLeft}>
+                              <Text style={styles.previewRowEmoji}>
+                                {getCategoryIcon(item.category)}
+                              </Text>
+                              <Text style={styles.previewRowName}>{item.name}</Text>
+                            </View>
+                            <View style={[styles.previewCategoryPill, { backgroundColor: colors.fill }]}>
+                              <Text style={[styles.previewCategoryPillText, { color: colors.text }]}>
+                                {item.category}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
 
-        {/* Due Date Calendar Modal */}
-        <Calendar
-          visible={showDueDateCalendar}
-          onClose={() => setShowDueDateCalendar(false)}
-          onSelectDate={(date: Date) => {
-            setFormData({ ...formData, dueDate: formatDateToInput(date) });
-            setShowDueDateCalendar(false);
-          }}
-          selectedDate={
-            formData.dueDate ? new Date(formData.dueDate) : undefined
-          }
-        />
-      </View>
+                {/* Submit bulk items */}
+                <TouchableOpacity
+                  style={[
+                    styles.fullSubmitNavyButton,
+                    parsedBulkPreview.length === 0 && { opacity: 0.5 },
+                  ]}
+                  disabled={parsedBulkPreview.length === 0}
+                  onPress={handleBulkSubmit}
+                >
+                  <Text style={styles.fullSubmitNavyButtonText}>
+                    Add {parsedBulkPreview.length} items
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        )}
 
-      {/* Bulk Add Modal */}
-      <Modal visible={showBulkAddModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📝 Bulk Add Items</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowBulkAddModal(false);
-                  setBulkItemsText("");
-                }}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSubtitle}>
-              Enter multiple items, one per line or separated by commas
-            </Text>
-
-            <TextInput
-              style={styles.bulkTextInput}
-              value={bulkItemsText}
-              onChangeText={setBulkItemsText}
-              placeholder="Milk, Bread, Eggs&#10;Butter&#10;Cheese"
-              placeholderTextColor="#999"
-              multiline
-              numberOfLines={10}
-              textAlignVertical="top"
-            />
-
-            <Text style={styles.bulkHint}>
-              ✨ Items will be auto-categorized based on their names
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => setShowBulkAddModal(false)}
-              >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-                onPress={handleBulkAddSave}
-              >
-                <Text style={styles.modalButtonText}>Add All Items</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Templates Modal */}
-      <Modal visible={showTemplatesModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📋 Shopping Templates</Text>
-              <TouchableOpacity
-                onPress={() => setShowTemplatesModal(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSubtitle}>Load saved shopping lists</Text>
-
+        {/* ========================================================
+            SCREEN 4: TEMPLATES SCREEN
+            ======================================================== */}
+        {activeScreen === "templates" && (
+          <View style={styles.templatesScreenContainer}>
             {templates.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>
-                  No templates saved yet
-                </Text>
-                <Text style={styles.emptyStateSubtext}>
-                  Add items to your list and tap &quot;Save&quot; to create a
-                  template
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyIcon}>📋</Text>
+                <Text style={styles.emptyText}>No templates saved</Text>
+                <Text style={styles.emptySubtext}>
+                  Save active unbought lists below to populate reusable checklists.
                 </Text>
               </View>
             ) : (
-              <ScrollView style={styles.templatesList}>
-                {templates.map((template, index) => (
-                  <View key={index} style={styles.templateItem}>
-                    <TouchableOpacity
-                      style={styles.templateInfo}
-                      onPress={() => loadTemplate(template)}
-                    >
-                      <Text style={styles.templateName}>{template.name}</Text>
-                      <Text style={styles.templateCount}>
-                        {template.items.length} items
+              <FlatList
+                data={templates}
+                keyExtractor={(item, index) => index.toString()}
+                contentContainerStyle={styles.templatesListContent}
+                renderItem={({ item, index }) => (
+                  <View style={styles.templateCard}>
+                    {/* Left: colored icon box */}
+                    <View style={[styles.templateIconBox, { backgroundColor: "#E6F4F2" }]}>
+                      <Text style={{ color: "#0D9488", fontSize: 18 }}>📋</Text>
+                    </View>
+
+                    {/* Middle Info */}
+                    <View style={styles.templateDetails}>
+                      <Text style={styles.templateTitleText}>{item.name}</Text>
+                      <Text style={styles.templateSubText}>
+                        {item.items.length} items • Saved {item.saveDate}
                       </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.templateDeleteButton}
-                      onPress={() => deleteTemplate(index)}
-                    >
-                      <Text style={styles.templateDeleteText}>🗑️</Text>
-                    </TouchableOpacity>
+                    </View>
+
+                    {/* Right action row */}
+                    <View style={styles.templateActionsRow}>
+                      <TouchableOpacity
+                        style={styles.templateLoadButton}
+                        onPress={() => handleLoadTemplate(item)}
+                      >
+                        <Text style={styles.templateLoadButtonText}>Load</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.templateDeleteButtonPill}
+                        onPress={() => handleDeleteTemplate(index)}
+                      >
+                        <Text style={{ fontSize: 14 }}>🗑️</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                ))}
-              </ScrollView>
+                )}
+              />
             )}
 
-            <TouchableOpacity
-              style={[
-                styles.modalButton,
-                styles.modalButtonSecondary,
-                { marginTop: 16 },
-              ]}
-              onPress={() => setShowTemplatesModal(false)}
-            >
-              <Text style={styles.modalButtonTextSecondary}>Close</Text>
-            </TouchableOpacity>
+            {/* Bottom template save trigger */}
+            <View style={styles.templatesFooter}>
+              <TouchableOpacity
+                style={styles.fullSubmitNavyButton}
+                onPress={handleSaveAsTemplate}
+              >
+                <Text style={styles.fullSubmitNavyButtonText}>Save current list as template</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        )}
+      </View>
 
-      {/* Save Template Modal */}
-      <Modal visible={showSaveTemplateModal} animationType="slide" transparent>
+      {/* Due Date Calendar Modal Component */}
+      <Calendar
+        visible={showDueDateCalendar}
+        onClose={() => setShowDueDateCalendar(false)}
+        onSelectDate={(date: Date) => {
+          setFormData({ ...formData, dueDate: formatDateToInput(date) });
+          setShowDueDateCalendar(false);
+        }}
+        selectedDate={formData.dueDate ? new Date(formData.dueDate) : undefined}
+        minDate={new Date()}
+      />
+
+      {/* Save Template Overlay Mini Modal */}
+      <Modal visible={showSaveTemplateModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>💾 Save as Template</Text>
-            <Text style={styles.modalSubtitle}>
-              Save your current shopping list for quick reuse
+            <Text style={styles.modalHeadingText}>💾 Save Current Checklist</Text>
+            <Text style={styles.modalDescText}>
+              All active unbought shopping items will be captured into a new template configuration.
             </Text>
 
-            <Text style={styles.label}>Template Name</Text>
+            <Text style={styles.formLabel}>Template Name</Text>
             <TextInput
-              style={styles.input}
+              style={styles.formTextInput}
               value={newTemplateName}
               onChangeText={setNewTemplateName}
-              placeholder="e.g., Weekly Groceries, Monthly Essentials"
+              placeholder="e.g. Weekly Groceries, Monthly Restocks"
               placeholderTextColor="#999"
             />
 
-            <View style={styles.modalButtons}>
+            <View style={styles.modalActionsRow}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => {
-                  setShowSaveTemplateModal(false);
-                  setNewTemplateName("");
-                }}
+                style={[styles.outlineFooterButton, { flex: 1 }]}
+                onPress={() => setShowSaveTemplateModal(false)}
               >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <Text style={styles.outlineFooterButtonText}>Cancel</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary]}
+                style={[styles.modalNavySaveButton, { flex: 1 }]}
                 onPress={saveTemplate}
               >
-                <Text style={styles.modalButtonText}>Save Template</Text>
+                <Text style={styles.modalNavySaveButtonText}>Save Template</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1062,550 +1126,718 @@ export default function ShoppingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  appContainer: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#F9FAFB",
   },
-  filterContainer: {
+  // Solid Header Layout
+  screenHeader: {
+    backgroundColor: COLOR_NAVY,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backArrowButton: {
+    marginRight: 15,
+    padding: 5,
+  },
+  backArrowText: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "bold",
+  },
+  headerTitleContainer: {
+    flex: 1,
+  },
+  headerTitleText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  headerSubtitleText: {
+    color: "#A5B4FC",
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  // Stat chips at top
+  statsContainer: {
     flexDirection: "row",
     padding: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    gap: 12,
   },
-  filterTab: {
+  statChip: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginHorizontal: 4,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  statChipInfo: {
+    marginLeft: 10,
+  },
+  statChipCount: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  statChipLabel: {
+    fontSize: 10,
+    color: "#6B7280",
+    marginTop: 1,
+  },
+
+  // Filter tabs bar
+  filterTabsRow: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLOR_BORDER,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  filterTabButton: {
+    flex: 1,
+    paddingVertical: 6,
+    marginHorizontal: 3,
     borderRadius: 8,
     backgroundColor: "#F3F4F6",
     alignItems: "center",
-  },
-  filterTabActive: {
-    backgroundColor: "#A78BFA",
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  filterTextActive: {
-    color: "#FFFFFF",
-  },
-  listContainer: {
-    padding: 16,
-  },
-  itemCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  itemBought: {
-    opacity: 0.6,
-    backgroundColor: "#F9FAFB",
-  },
-  itemHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#A78BFA",
-    marginRight: 12,
-    alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    backgroundColor: "#A78BFA",
+  filterTabButtonActive: {
+    backgroundColor: COLOR_NAVY,
   },
-  itemInfo: {
+  filterTabButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  filterTabButtonTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // Stacks / Scrolling
+  listScrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  categoryStack: {
+    marginBottom: 20,
+  },
+  categoryStackLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#6B7280",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+
+  // standard item card row
+  itemCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  itemCardBought: {
+    backgroundColor: "#F9FAFB",
+    borderColor: "#E5E7EB",
+    opacity: 0.7,
+  },
+  nestedFolderItem: {
+    marginLeft: 15,
+    borderLeftWidth: 3,
+    borderLeftColor: "#E5E7EB",
+  },
+
+  // left circular checkbox
+  circularCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLOR_NAVY,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  circularCheckboxChecked: {
+    borderColor: "#639922",
+    backgroundColor: "#639922",
+  },
+  circularCheckboxInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFFFFF",
+  },
+
+  // category icon block
+  categorySquare: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  categorySquareEmoji: {
+    fontSize: 16,
+  },
+
+  // Main Card Text details
+  itemCardMainInfo: {
     flex: 1,
   },
   itemName: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "500",
     color: "#1F2937",
-    marginBottom: 8,
+    marginBottom: 2,
   },
   itemNameBought: {
     textDecorationLine: "line-through",
     color: "#9CA3AF",
   },
-  itemTags: {
+  subLabelRow: {
     flexDirection: "row",
+    alignItems: "center",
     flexWrap: "wrap",
     gap: 6,
-    marginBottom: 4,
   },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  typeTag: {
-    backgroundColor: "#DBEAFE",
-  },
-  sharedTag: {
-    backgroundColor: "#D1FAE5",
-  },
-  tagText: {
+  itemSublabel: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  dueDate: {
-    fontSize: 12,
-    color: "#EF4444",
-    marginTop: 4,
-  },
-  boughtDate: {
-    fontSize: 12,
-    color: "#10B981",
-    marginTop: 4,
-  },
-  itemActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 12,
-    gap: 8,
-  },
-  actionButton: {
-    padding: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 6,
-  },
-  actionButtonText: {
-    fontSize: 16,
-  },
-  addButton: {
-    position: "absolute",
-    bottom: 24,
-    right: 24,
-    backgroundColor: "#A78BFA",
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 30,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  addButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
     color: "#9CA3AF",
   },
+  sharedBadge: {
+    backgroundColor: "#EFF5E9",
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  sharedBadgeText: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#639922",
+  },
+
+  // Action icons container inside cards
+  cardActionsContainer: {
+    flexDirection: "row",
+    marginRight: 10,
+    gap: 8,
+  },
+  cardActionIcon: {
+    padding: 4,
+  },
+  actionIconEmoji: {
+    fontSize: 13,
+  },
+
+  // priority right dot
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+
+  // expandable folder items cards
+  folderCardContainer: {
+    marginBottom: 8,
+  },
+  folderHeader: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  folderHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  folderIcon: {
+    fontSize: 22,
+  },
+  folderName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  folderSubtitle: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 1,
+  },
+  folderHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  itemCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  itemCountBadgeText: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  chevronIcon: {
+    fontSize: 10,
+    color: "#6B7280",
+    marginRight: 2,
+  },
+  folderItemsContainer: {
+    marginTop: 4,
+    paddingLeft: 4,
+  },
+
+  // Footer navigation outline row
+  footerOutlineRow: {
+    flexDirection: "row",
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 0.5,
+    borderTopColor: COLOR_BORDER,
+    gap: 12,
+  },
+  outlineFooterButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLOR_NAVY,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  outlineFooterButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLOR_NAVY,
+  },
+
+  // ========================================================
+  // ADD SCREENS LAYOUT
+  // ========================================================
+  addScreenScroll: {
+    paddingBottom: 40,
+  },
+  switcherContainer: {
+    flexDirection: "row",
+    backgroundColor: "#E5E7EB",
+    borderRadius: 10,
+    margin: 16,
+    padding: 4,
+  },
+  switcherTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  switcherTabActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  switcherTabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  switcherTabTextActive: {
+    color: COLOR_NAVY,
+    fontWeight: "bold",
+  },
+
+  // Form Fields Single mode
+  formContainer: {
+    paddingHorizontal: 16,
+  },
+  formLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#4B5563",
+    letterSpacing: 1.1,
+    marginBottom: 8,
+    marginTop: 14,
+  },
+  formTextInput: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 13,
+    color: "#1F2937",
+  },
+
+  // Pill Chips
+  pillChipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  pillChip: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  pillChipText: {
+    fontSize: 12,
+    color: "#4B5563",
+  },
+
+  // Type selection grid
+  typeSelectorRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  typeButton: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  typeButtonActive: {
+    backgroundColor: COLOR_NAVY,
+    borderColor: COLOR_NAVY,
+  },
+  typeButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  typeButtonTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+
+  // Priority selection row
+  prioritySelectorRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  priorityButton: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  prioBtnDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  priorityButtonText: {
+    fontSize: 12,
+    color: "#4B5563",
+    fontWeight: "600",
+  },
+
+  // Date picker target
+  datePickerContainer: {
+    width: "100%",
+  },
+  datePickerField: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 10,
+    padding: 14,
+  },
+  dateText: {
+    fontSize: 13,
+    color: "#1F2937",
+    fontWeight: "500",
+  },
+  placeholderDateText: {
+    fontSize: 13,
+    color: "#9CA3AF",
+  },
+
+  // Share Switch toggle row
+  shareToggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 20,
+    marginBottom: 24,
+  },
+  shareToggleTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  shareToggleSubtitle: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 2,
+  },
+
+  // Navy submission buttons
+  fullSubmitNavyButton: {
+    backgroundColor: COLOR_NAVY,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    marginBottom: 20,
+  },
+  fullSubmitNavyButtonText: {
+    fontSize: 14,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+
+  // Bulk Text Area
+  bulkTextarea: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 13,
+    color: "#1F2937",
+    minHeight: 180,
+    marginBottom: 16,
+  },
+
+  // Preview blocks
+  previewContainer: {
+    marginBottom: 20,
+  },
+  previewHeading: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#D97706",
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  previewListScroll: {
+    maxHeight: 220,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    padding: 10,
+  },
+  previewRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#F3F4F6",
+  },
+  previewRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  previewRowEmoji: {
+    fontSize: 15,
+  },
+  previewRowName: {
+    fontSize: 13,
+    color: "#1F2937",
+  },
+  previewCategoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  previewCategoryPillText: {
+    fontSize: 10,
+    fontWeight: "600",
+  },
+
+  // ========================================================
+  // TEMPLATES SCREEN LAYOUT
+  // ========================================================
+  templatesScreenContainer: {
+    flex: 1,
+  },
+  templatesListContent: {
+    padding: 16,
+  },
+  templateCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  templateIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  templateDetails: {
+    flex: 1,
+  },
+  templateTitleText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  templateSubText: {
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginTop: 2,
+  },
+  templateActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  templateLoadButton: {
+    borderWidth: 1.5,
+    borderColor: COLOR_NAVY,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  templateLoadButtonText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLOR_NAVY,
+  },
+  templateDeleteButtonPill: {
+    padding: 6,
+  },
+  templatesFooter: {
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 0.5,
+    borderTopColor: COLOR_BORDER,
+  },
+
+  // Mini overlays modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(26, 31, 54, 0.4)", // matches dark navy opacity
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
   modalContent: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: "90%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-    width: "100%",
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1F2937",
-    flex: 1,
-    textAlign: "center",
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  closeButtonText: {
-    fontSize: 18,
-    color: "#6B7280",
-    fontWeight: "bold",
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  input: {
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: "#1F2937",
-  },
-  placeholder: {
-    color: "#9CA3AF",
-    fontSize: 16,
-  },
-  dateText: {
-    color: "#1F2937",
-    fontSize: 16,
-  },
-  buttonGroup: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  optionButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  optionButtonActive: {
-    backgroundColor: "#A78BFA",
-    borderColor: "#A78BFA",
-  },
-  optionText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  optionTextActive: {
-    color: "#FFFFFF",
-  },
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 16,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 24,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  buttonCancel: {
-    backgroundColor: "#F3F4F6",
-  },
-  buttonSave: {
-    backgroundColor: "#A78BFA",
-  },
-  buttonCancelText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  buttonSaveText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  calendarModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  calendarModalContent: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
     padding: 20,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 380,
   },
-  mainActionsContainer: {
-    padding: 16,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  mainActionsRow: {
-    flexDirection: "row",
-    marginBottom: 12,
-    gap: 12,
-  },
-  mainActionButton: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  mainActionIcon: {
-    fontSize: 36,
-    marginBottom: 8,
-  },
-  mainActionTitle: {
+  modalHeadingText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  mainActionSubtitle: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  quickActionsContainer: {
-    flexDirection: "row",
-    padding: 12,
-    paddingBottom: 8,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "space-around",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  quickActionButton: {
-    alignItems: "center",
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: "#F9FAFB",
-    minWidth: 70,
-  },
-  quickActionIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  quickActionText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  bulkTextInput: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 15,
-    color: "#1F2937",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    minHeight: 200,
-    marginBottom: 12,
-  },
-  bulkHint: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontStyle: "italic",
-    marginBottom: 16,
-  },
-  voiceInputContainer: {
-    marginBottom: 20,
-  },
-  voiceInputLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  voiceInputExample: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontStyle: "italic",
-    marginBottom: 12,
-    paddingLeft: 4,
-  },
-  voiceInput: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 15,
-    color: "#1F2937",
-    borderWidth: 2,
-    borderColor: "#A78BFA",
-    minHeight: 150,
-    textAlignVertical: "top",
-  },
-  voiceInputHint: {
-    fontSize: 12,
-    color: "#8B5CF6",
-    marginTop: 8,
-    paddingLeft: 4,
-  },
-  templatesList: {
-    maxHeight: 400,
-  },
-  templateItem: {
-    flexDirection: "row",
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: "center",
-  },
-  templateInfo: {
-    flex: 1,
-  },
-  templateName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  templateCount: {
-    fontSize: 13,
-    color: "#6B7280",
-  },
-  templateDeleteButton: {
-    padding: 8,
-  },
-  templateDeleteText: {
-    fontSize: 20,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalButtonPrimary: {
-    backgroundColor: "#A78BFA",
-  },
-  modalButtonSecondary: {
-    backgroundColor: "#F3F4F6",
-  },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalButtonTextSecondary: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  emptyState: {
-    padding: 40,
-    alignItems: "center",
-  },
-  emptyStateText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    textAlign: "center",
-  },
-  // Grouped card styles
-  groupedCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "#A78BFA",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  groupedHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  groupedTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#A78BFA",
-  },
-  groupedItem: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  groupedItemHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-  groupedItemInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  groupedItemName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
+    color: COLOR_NAVY,
     marginBottom: 6,
   },
-  groupedItemActions: {
+  modalDescText: {
+    fontSize: 11,
+    color: "#6B7280",
+    lineHeight: 16,
+    marginBottom: 16,
+  },
+  modalActionsRow: {
     flexDirection: "row",
-    gap: 8,
-    justifyContent: "flex-end",
-    marginTop: 4,
+    gap: 10,
+    marginTop: 18,
+  },
+  modalNavySaveButton: {
+    backgroundColor: COLOR_NAVY,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalNavySaveButtonText: {
+    fontSize: 13,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  // History views
+  historyTimeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  historyTimeText: {
+    fontSize: 11,
+    color: "#9CA3AF",
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+  },
+  emptyIcon: {
+    fontSize: 54,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  emptySubtext: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    textAlign: "center",
   },
 });
