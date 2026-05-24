@@ -44,11 +44,8 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "runtimeVersion": "1.0.0",
     "updates": {
-      "enabled": false,
-      "checkAutomatically": "OFF",
-      "fallbackToCacheTimeout": 0
+      "enabled": false
     }
   }
 }

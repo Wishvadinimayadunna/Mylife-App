@@ -133,6 +133,43 @@ export interface EmergencyContact {
   updatedAt: Date;
 }
 
+export type MoodValue = "Amazing" | "Good" | "Neutral" | "Bad" | "Terrible";
+export type SymptomSeverity = "Mild" | "Moderate" | "Severe";
+export type PeriodFlow = "Light" | "Medium" | "Heavy";
+
+export interface MoodRecord {
+  id: string;
+  profileID: string;
+  mood: MoodValue;
+  notes?: string;
+  recordDate: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SymptomRecord {
+  id: string;
+  profileID: string;
+  symptomName: string;
+  severity: SymptomSeverity;
+  notes?: string;
+  recordDate: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PeriodRecord {
+  id: string;
+  profileID: string;
+  startDate: Date;
+  endDate?: Date;
+  flow: PeriodFlow;
+  notes?: string;
+  isPrivate: true; // Always true — never shared
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ============================================
 // UTILITY
 // ============================================
@@ -158,6 +195,7 @@ export interface UtilityBill {
   isRecurring: boolean;
   reminderEnabled: boolean;
   reminderTime?: string; // e.g., "19:00" for 7:00 PM
+  notificationId?: string;
   isShared: boolean;
   isPaid: boolean;
   paidDate?: Date;

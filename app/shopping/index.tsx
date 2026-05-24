@@ -12,7 +12,7 @@ import {
   ShoppingItemType,
   ShoppingPriority,
 } from "@/types";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -56,6 +56,7 @@ const PRIORITY_COLORS = {
 
 export default function ShoppingScreen() {
   const { profile } = useAppStore();
+  const router = useRouter();
 
   // Navigation states
   const [activeScreen, setActiveScreen] = useState<"main" | "add" | "templates">("main");
@@ -654,17 +655,15 @@ export default function ShoppingScreen() {
 
       {/* SOLID HEADER */}
       <View style={styles.screenHeader}>
-        {activeScreen !== "main" && (
-          <TouchableOpacity
-            style={styles.backArrowButton}
-            onPress={() => {
-              setEditingItem(null);
-              setActiveScreen("main");
-            }}
-          >
-            <Text style={styles.backArrowText}>←</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.backArrowButton}
+          onPress={() => {
+            if (activeScreen !== "main") { setEditingItem(null); setActiveScreen("main"); }
+            else { router.back(); }
+          }}
+        >
+          <Text style={styles.backArrowText}>←</Text>
+        </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitleText}>
             {activeScreen === "main"
