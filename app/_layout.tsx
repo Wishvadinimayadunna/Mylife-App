@@ -83,17 +83,14 @@ export default function RootLayout() {
           name="modal"
           options={{ presentation: "modal", title: "Modal" }}
         />
-        <Stack.Screen name="profile" options={{ title: "Profile" }} />
-        <Stack.Screen name="family" options={{ title: "Family" }} />
-        <Stack.Screen name="finance" options={{ title: "Finance" }} />
-        <Stack.Screen name="shopping" options={{ title: "Shopping" }} />
-        <Stack.Screen
-          name="future-event"
-          options={{ title: "Future Events" }}
-        />
-        <Stack.Screen name="todo" options={{ title: "Todo" }} />
-        <Stack.Screen name="health" options={{ title: "Health" }} />
-        <Stack.Screen name="utility" options={{ title: "Utility" }} />
+        <Stack.Screen name="profile/index" options={{ title: "Profile", headerShown: false }} />
+        <Stack.Screen name="family/index" options={{ title: "Family" }} />
+        <Stack.Screen name="finance/index" options={{ title: "Finance" }} />
+        <Stack.Screen name="shopping/index" options={{ title: "Shopping", headerShown: false }} />
+        <Stack.Screen name="future-event/index" options={{ title: "Future Events" }} />
+        <Stack.Screen name="todo/index" options={{ title: "Todo" }} />
+        <Stack.Screen name="health/index" options={{ title: "Health", headerShown: false }} />
+        <Stack.Screen name="utility/index" options={{ title: "Utility" }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

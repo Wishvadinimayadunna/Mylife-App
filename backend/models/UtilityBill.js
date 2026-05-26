@@ -55,6 +55,9 @@ const utilityBillSchema = new mongoose.Schema({
   reminderTime: {
     type: String,
   },
+  notificationId: {
+    type: String,
+  },
   isShared: {
     type: Boolean,
     default: false,
