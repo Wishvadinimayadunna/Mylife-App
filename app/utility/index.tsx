@@ -1,5 +1,5 @@
 // ============================================
-// Utility Bills Module
+// Utility Bills Module (UX Redesigned & Compacted)
 // Electricity, Water, Wi-Fi, Mobile, Gas, TV, Rent, Insurance
 // ============================================
 
@@ -11,19 +11,28 @@ import {
   scheduleUtilityBillReminder
 } from "@/utils/notifications";
 import { Stack, useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
+  LayoutAnimation,
+  Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View
 } from "react-native";
+
+// Enable LayoutAnimation for Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type TabType = "all" | "unpaid" | "paid";
 
@@ -36,7 +45,6 @@ const BILL_TYPES: UtilityType[] = [
   "TV",
   "Rent",
   "Insurance",
-  "Other",
 ];
 
 const BILL_TYPE_ICONS: Record<UtilityType, string> = {
@@ -51,16 +59,25 @@ const BILL_TYPE_ICONS: Record<UtilityType, string> = {
   Other: "💰",
 };
 
+const datePresets = [
+  { label: "Today", days: 0 },
+  { label: "5 Days", days: 5 },
+  { label: "10 Days", days: 10 },
+  { label: "15 Days", days: 15 },
+];
+
 export default function UtilityScreen() {
+  const scrollViewRef = useRef<ScrollView>(null);
+  
   const [activeTab, setActiveTab] = useState<TabType>("unpaid");
   const [allBills, setAllBills] = useState<UtilityBill[]>([]);
   const [bills, setBills] = useState<UtilityBill[]>([]);
   const [loading, setLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [isAddingExpanded, setIsAddingExpanded] = useState(false);
   const [editingBill, setEditingBill] = useState<UtilityBill | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // Form state
+  // Form state (Toggles default to true/false in backend but stripped from simple UI)
   const [formData, setFormData] = useState({
     name: "",
     type: "Electricity" as UtilityType,
@@ -68,7 +85,7 @@ export default function UtilityScreen() {
     dueDay: "",
     dueDate: new Date(),
     isRecurring: true,
-    reminderEnabled: false,
+    reminderEnabled: true,
     reminderTime: "09:00",
     isShared: false,
   });
@@ -79,7 +96,7 @@ export default function UtilityScreen() {
     try {
       const data = await utilityService.getAllBills();
       setAllBills(data);
-      
+
       // Filter list based on active tab
       let filtered: UtilityBill[] = [];
       if (activeTab === "all") {
@@ -130,20 +147,14 @@ export default function UtilityScreen() {
       dueDay: "",
       dueDate: new Date(),
       isRecurring: true,
-      reminderEnabled: false,
+      reminderEnabled: true,
       reminderTime: "09:00",
       isShared: false,
     });
     setEditingBill(null);
   };
 
-  // Open add modal
-  const openAddModal = () => {
-    resetForm();
-    setModalVisible(true);
-  };
-
-  // Open edit modal
+  // Open edit modal (re-routed inline)
   const openEditModal = (bill: UtilityBill) => {
     setEditingBill(bill);
     setFormData({
@@ -157,13 +168,15 @@ export default function UtilityScreen() {
       reminderTime: bill.reminderTime || "09:00",
       isShared: bill.isShared,
     });
-    setModalVisible(true);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsAddingExpanded(true);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   // Save bill
   const saveBill = async () => {
     if (!formData.name || !formData.amount || !formData.dueDay) {
-      Alert.alert("Error", "Please fill required fields");
+      Alert.alert("Error", "Please fill name, amount and due day fields");
       return;
     }
 
@@ -171,7 +184,7 @@ export default function UtilityScreen() {
     const dueDay = parseInt(formData.dueDay);
 
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert("Error", "Invalid amount");
+      Alert.alert("Error", "Invalid amount entered");
       return;
     }
 
@@ -225,7 +238,8 @@ export default function UtilityScreen() {
         await utilityService.addBill(billData);
       }
 
-      setModalVisible(false);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setIsAddingExpanded(false);
       resetForm();
       loadBills();
     } catch (error) {
@@ -236,7 +250,7 @@ export default function UtilityScreen() {
 
   // Delete bill
   const deleteBill = (bill: UtilityBill) => {
-    Alert.alert("Delete Bill", `Delete ${bill.name}?`, [
+    Alert.alert("Delete Bill", `Are you sure you want to delete ${bill.name}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -292,16 +306,7 @@ export default function UtilityScreen() {
 
   const isDueSoon = (dueDate: Date | string, isPaid: boolean) => {
     if (isPaid) return false;
-    const diff = getDaysDiff(dueDate);
-    return diff >= 0 && diff <= 7;
-  };
-
-  const calculateProgress = (dueDate: Date | string, isPaid: boolean) => {
-    if (isPaid) return 1;
-    const diff = getDaysDiff(dueDate);
-    if (diff <= 0) return 1;
-    if (diff >= 30) return 0;
-    return (30 - diff) / 30;
+    return getDaysDiff(dueDate) >= 0;
   };
 
   // Group list visually
@@ -311,13 +316,11 @@ export default function UtilityScreen() {
 
     const overdueGroup = unpaid.filter(b => isOverdue(b.dueDate, false));
     const dueSoonGroup = unpaid.filter(b => isDueSoon(b.dueDate, false));
-    const upcomingGroup = unpaid.filter(b => !isOverdue(b.dueDate, false) && !isDueSoon(b.dueDate, false));
 
     if (activeTab === "unpaid") {
       return [
         { title: "🚨 Overdue", data: overdueGroup, color: "#EF4444" },
         { title: "⏳ Due Soon", data: dueSoonGroup, color: "#F59E0B" },
-        { title: "📅 Upcoming", data: upcomingGroup, color: "#6366F1" },
       ].filter(group => group.data.length > 0);
     } else if (activeTab === "paid") {
       return [
@@ -327,13 +330,12 @@ export default function UtilityScreen() {
       return [
         { title: "🚨 Overdue", data: overdueGroup, color: "#EF4444" },
         { title: "⏳ Due Soon", data: dueSoonGroup, color: "#F59E0B" },
-        { title: "📅 Upcoming", data: upcomingGroup, color: "#6366F1" },
         { title: "✅ Paid History", data: paid, color: "#10B981" }
       ].filter(group => group.data.length > 0);
     }
   };
 
-  // Render Metric Strip (viewBalanceSummary)
+  // Render Metric Strip
   const renderSummaryStrip = () => {
     let totalUnpaid = 0;
     let overdueCount = 0;
@@ -368,32 +370,201 @@ export default function UtilityScreen() {
     );
   };
 
-  // Render Single Bill Card
+  // Render Quick Add Trigger & Simplified Accordion Form
+  const renderQuickAddSection = () => {
+    return (
+      <View style={styles.inlineFormContainer}>
+        {/* Shrunk flush-left pill button */}
+        <TouchableOpacity
+          style={[styles.pillTriggerBtn, isAddingExpanded && styles.pillTriggerBtnActive]}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setIsAddingExpanded(!isAddingExpanded);
+            if (isAddingExpanded) {
+              resetForm();
+            }
+          }}
+        >
+          <Text style={[styles.pillTriggerBtnText, isAddingExpanded && styles.pillTriggerBtnTextActive]}>
+            {isAddingExpanded ? "✕ Cancel" : "➕ Add Bill"}
+          </Text>
+        </TouchableOpacity>
+
+        {isAddingExpanded && (
+          <View style={styles.inlineFormCard}>
+            {/* Step 1: Pick Bill Type (Horizontal scroll chips row) */}
+            <Text style={styles.inputLabel}>Bill Type</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.horizontalChipsScroll}
+              contentContainerStyle={styles.horizontalChipsContainer}
+            >
+              {BILL_TYPES.map((type) => {
+                const isSelected = formData.type === type;
+                const icon = BILL_TYPE_ICONS[type] || "💰";
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.horizontalChip,
+                      isSelected && styles.horizontalChipSelected,
+                    ]}
+                    onPress={() => {
+                      const shouldAutofill = !formData.name || BILL_TYPES.includes(formData.name as any);
+                      setFormData({
+                        ...formData,
+                        type,
+                        name: shouldAutofill ? type : formData.name,
+                      });
+                    }}
+                  >
+                    <Text style={styles.horizontalChipIcon}>{icon}</Text>
+                    <Text style={[styles.horizontalChipText, isSelected && styles.horizontalChipTextSelected]}>
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Step 2: Core Details */}
+            <View style={styles.formRow}>
+              <View style={[styles.formCol, { flex: 1.5 }]}>
+                <Text style={styles.inputLabel}>Bill Name</Text>
+                <TextInput
+                  style={styles.inputField}
+                  placeholder="e.g., Home Electricity"
+                  placeholderTextColor="#94A3B8"
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                />
+              </View>
+              <View style={[styles.formCol, { flex: 1, marginLeft: 12 }]}>
+                <Text style={styles.inputLabel}>Amount</Text>
+                <View style={styles.currencyInputContainer}>
+                  <Text style={styles.currencyPrefix}>Rs.</Text>
+                  <TextInput
+                    style={styles.currencyInputField}
+                    placeholder="0.00"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="decimal-pad"
+                    value={formData.amount}
+                    onChangeText={(text) => setFormData({ ...formData, amount: text })}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formCol, { flex: 1.3 }]}>
+                <Text style={styles.inputLabel}>Due Date</Text>
+                <TouchableOpacity
+                  style={styles.dateSelectorBtn}
+                  onPress={() => setShowCalendar(true)}
+                >
+                  <Text style={styles.dateSelectorText}>
+                    📅 {formData.dueDate.toLocaleDateString()}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.formCol, { flex: 0.7, marginLeft: 12 }]}>
+                <Text style={styles.inputLabel}>Due Day (1-31)</Text>
+                <TextInput
+                  style={styles.inputField}
+                  placeholder="15"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                  value={formData.dueDay}
+                  onChangeText={(text) => setFormData({ ...formData, dueDay: text })}
+                />
+              </View>
+            </View>
+
+            {/* Inline Date Preset Chips */}
+            <View style={styles.datePresetRow}>
+              {datePresets.map((preset) => {
+                return (
+                  <TouchableOpacity
+                    key={preset.label}
+                    style={styles.presetChip}
+                    onPress={() => {
+                      const targetDate = new Date();
+                      targetDate.setDate(targetDate.getDate() + preset.days);
+                      setFormData({
+                        ...formData,
+                        dueDate: targetDate,
+                        dueDay: targetDate.getDate().toString(),
+                      });
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>+{preset.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Shared Option Toggle Chip */}
+            <View style={styles.sharedToggleRow}>
+              <TouchableOpacity
+                style={[styles.toggleChip, formData.isShared && styles.toggleChipActive]}
+                onPress={() => setFormData({ ...formData, isShared: !formData.isShared })}
+              >
+                <Text style={[styles.toggleChipText, formData.isShared && styles.toggleChipTextActive]}>
+                  {formData.isShared ? "👥 Shared with Spouse" : "👤 Personal Bill"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Action CTAs */}
+            <View style={styles.formActionsRow}>
+              <TouchableOpacity style={styles.saveFormBtn} onPress={saveBill}>
+                <Text style={styles.saveFormBtnText}>
+                  {editingBill ? "Update Bill" : "Save Bill"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Render Single Compact Bill Card
   const renderBillCard = (bill: UtilityBill) => {
     const dueDate = new Date(bill.dueDate);
     const overdue = isOverdue(bill.dueDate, bill.isPaid);
     const dueSoon = isDueSoon(bill.dueDate, bill.isPaid);
-    const progress = calculateProgress(bill.dueDate, bill.isPaid);
 
     // Color definitions
-    let themeColor = "#6366F1"; // Purple/Indigo default
+    let themeColor = "#6366F1"; // Upcoming indigo
     if (bill.isPaid) themeColor = "#10B981"; // Green
     else if (overdue) themeColor = "#EF4444"; // Red
     else if (dueSoon) themeColor = "#F59E0B"; // Amber
 
     return (
-      <View key={bill.id} style={[styles.card, { borderLeftColor: themeColor }]}>
+      <View
+        key={bill.id}
+        style={[
+          styles.card,
+          { borderLeftColor: themeColor, opacity: bill.isPaid ? 0.65 : 1 }
+        ]}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.billInfo}>
-            <Text style={styles.billIcon}>
-              {BILL_TYPE_ICONS[bill.type] || "💰"}
-            </Text>
+            <View style={styles.billIconContainer}>
+              <Text style={styles.billIcon}>
+                {BILL_TYPE_ICONS[bill.type] || "💰"}
+              </Text>
+            </View>
             <View style={styles.billDetails}>
               <Text style={styles.billName}>{bill.name}</Text>
               <Text style={styles.billType}>{bill.type}</Text>
             </View>
           </View>
-          <Text style={[styles.billAmount, { color: themeColor }]}>Rs. {bill.amount.toFixed(2)}</Text>
+          <Text style={[styles.billAmount, { color: themeColor }]}>
+            Rs. {bill.amount.toFixed(2)}
+          </Text>
         </View>
 
         <View style={styles.cardBody}>
@@ -402,7 +573,6 @@ export default function UtilityScreen() {
             <Text style={[styles.infoValue, overdue && styles.overdueText]}>
               {dueDate.toLocaleDateString()}
               {overdue && " (Overdue)"}
-              {dueSoon && " (Due Soon)"}
             </Text>
           </View>
 
@@ -415,32 +585,27 @@ export default function UtilityScreen() {
 
           {bill.isShared && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>👥 Shared with Spouse</Text>
+              <Text style={styles.badgeText}>👥 Shared</Text>
             </View>
           )}
 
-          {/* Progress Bar representing Billing Cycle */}
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${progress * 100}%`, backgroundColor: themeColor }]} />
-          </View>
-
-          {/* Notification Banner Confirmation */}
-          {bill.reminderEnabled && !bill.isPaid && (
-            <View style={styles.reminderBanner}>
-              <Text style={styles.reminderBannerText}>
-                🔔 Reminder active: 3 days before due date{bill.reminderTime ? ` at ${bill.reminderTime}` : ""}
-              </Text>
-            </View>
-          )}
-
-          {/* Direct Card Actions (Replacing hidden gestures) */}
+          {/* Action Row */}
           <View style={styles.cardActions}>
             <TouchableOpacity
-              style={[styles.actionBtn, bill.isPaid ? styles.unpayBtn : styles.payBtn]}
+              style={[
+                styles.actionBtn,
+                bill.isPaid ? styles.unpayBtn : styles.payBtn,
+                { flex: 1.5 }
+              ]}
               onPress={() => togglePayment(bill)}
             >
-              <Text style={[styles.actionBtnText, bill.isPaid ? styles.unpayBtnText : styles.payBtnText]}>
-                {bill.isPaid ? "↩️ Mark Unpaid" : "✅ Mark Paid"}
+              <Text
+                style={[
+                  styles.actionBtnText,
+                  bill.isPaid ? styles.unpayBtnText : styles.payBtnText
+                ]}
+              >
+                {bill.isPaid ? "↩️ Unpaid" : "✅ Settle"}
               </Text>
             </TouchableOpacity>
 
@@ -516,223 +681,59 @@ export default function UtilityScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Scrollable Grouped Content */}
+        {/* Scrollable Main Content */}
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6366F1" />
-          </View>
-        ) : totalDisplayCount === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>💡</Text>
-            <Text style={styles.emptyText}>No bills found</Text>
-            <Text style={styles.emptySubtext}>
-              Tap + to add your first bill
-            </Text>
+            <ActivityIndicator size="large" color="#D97706" />
           </View>
         ) : (
           <ScrollView
+            ref={scrollViewRef}
             style={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {groupedSections.map(group => (
-              <View key={group.title} style={styles.sectionContainer}>
-                <Text style={[styles.sectionHeader, { color: group.color }]}>{group.title}</Text>
-                {group.data.map(renderBillCard)}
+            {/* Shrunk trigger pill and inline accordion simplified form */}
+            {renderQuickAddSection()}
+
+            {totalDisplayCount === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyIcon}>💡</Text>
+                <Text style={styles.emptyText}>No bills found</Text>
+                <Text style={styles.emptySubtext}>
+                  Tap Add Bill above to schedule your first utility payment.
+                </Text>
               </View>
-            ))}
+            ) : (
+              groupedSections.map((group) => (
+                <View key={group.title} style={styles.sectionContainer}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={[styles.sectionHeader, { color: group.color }]}>
+                      {group.title}
+                    </Text>
+                    <View style={[styles.statusPill, { backgroundColor: group.color + "20" }]}>
+                      <Text style={[styles.statusPillText, { color: group.color }]}>
+                        {group.data.length}
+                      </Text>
+                    </View>
+                  </View>
+                  {group.data.map(renderBillCard)}
+                </View>
+              ))
+            )}
             <View style={styles.bottomPadding} />
           </ScrollView>
         )}
-
-        {/* FAB */}
-        <TouchableOpacity style={styles.fab} onPress={openAddModal}>
-          <Text style={styles.fabIcon}>+</Text>
-        </TouchableOpacity>
-
-        {/* Add/Edit Modal */}
-        <Modal
-          visible={modalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => {
-            setModalVisible(false);
-            resetForm();
-          }}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingBill ? "Edit Bill" : "Add Bill"}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setModalVisible(false);
-                    resetForm();
-                  }}
-                >
-                  <Text style={styles.closeButton}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.modalBody}
-                showsVerticalScrollIndicator={false}
-              >
-                {/* 1. Icon-Forward Bill Type Picker Grid (Direct selection) */}
-                <Text style={styles.label}>Bill Type *</Text>
-                <View style={styles.typeGrid}>
-                  {BILL_TYPES.map((type) => {
-                    const isSelected = formData.type === type;
-                    return (
-                      <TouchableOpacity
-                        key={type}
-                        style={[
-                          styles.typeGridChip,
-                          isSelected && styles.typeGridChipSelected,
-                        ]}
-                        onPress={() => setFormData({ ...formData, type })}
-                      >
-                        <Text style={styles.typeGridIcon}>{BILL_TYPE_ICONS[type]}</Text>
-                        <Text
-                          style={[
-                            styles.typeGridText,
-                            isSelected && styles.typeGridTextSelected,
-                          ]}
-                        >
-                          {type}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* 2. Inline Two-Column Inputs (Name & Amount) */}
-                <View style={styles.formRow}>
-                  <View style={[styles.formCol, { flex: 1.5 }]}>
-                    <Text style={styles.label}>Name *</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g., Home Electricity"
-                      value={formData.name}
-                      onChangeText={(text) =>
-                        setFormData({ ...formData, name: text })
-                      }
-                    />
-                  </View>
-                  <View style={[styles.formCol, { flex: 1, marginLeft: 12 }]}>
-                    <Text style={styles.label}>Amount (Rs.) *</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      value={formData.amount}
-                      onChangeText={(text) =>
-                        setFormData({ ...formData, amount: text })
-                      }
-                    />
-                  </View>
-                </View>
-
-                {/* 3. Inline Two-Column Inputs (Due Date & Due Day) */}
-                <View style={styles.formRow}>
-                  <View style={[styles.formCol, { flex: 1.3 }]}>
-                    <Text style={styles.label}>Next Due Date *</Text>
-                    <TouchableOpacity
-                      style={styles.input}
-                      onPress={() => setShowCalendar(true)}
-                    >
-                      <Text style={styles.inputText}>
-                        {formData.dueDate.toLocaleDateString()}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={[styles.formCol, { flex: 0.7, marginLeft: 12 }]}>
-                    <Text style={styles.label}>Due Day (1-31) *</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g., 15"
-                      keyboardType="number-pad"
-                      value={formData.dueDay}
-                      onChangeText={(text) =>
-                        setFormData({ ...formData, dueDay: text })
-                      }
-                    />
-                  </View>
-                </View>
-
-                {/* Recurring switch */}
-                <View style={styles.switchRow}>
-                  <Text style={styles.label}>Recurring (Monthly)</Text>
-                  <Switch
-                    value={formData.isRecurring}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, isRecurring: value })
-                    }
-                    trackColor={{ false: "#E5E7EB", true: "#6366F1" }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-
-                {/* Reminder switch */}
-                <View style={styles.switchRow}>
-                  <Text style={styles.label}>Enable Reminder (3 days before)</Text>
-                  <Switch
-                    value={formData.reminderEnabled}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, reminderEnabled: value })
-                    }
-                    trackColor={{ false: "#E5E7EB", true: "#6366F1" }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-
-                {formData.reminderEnabled && (
-                  <>
-                    <Text style={styles.label}>Reminder Time</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="HH:MM (e.g., 09:00)"
-                      value={formData.reminderTime}
-                      onChangeText={(text) =>
-                        setFormData({ ...formData, reminderTime: text })
-                      }
-                    />
-                  </>
-                )}
-
-                {/* Shared switch */}
-                <View style={styles.switchRow}>
-                  <Text style={styles.label}>Shared Bill</Text>
-                  <Switch
-                    value={formData.isShared}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, isShared: value })
-                    }
-                    trackColor={{ false: "#E5E7EB", true: "#6366F1" }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-
-                {/* Save Button */}
-                <TouchableOpacity style={styles.saveButton} onPress={saveBill}>
-                  <Text style={styles.saveButtonText}>
-                    {editingBill ? "Update Bill" : "Add Bill"}
-                  </Text>
-                </TouchableOpacity>
-                
-                <View style={{ height: 40 }} />
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
 
         {/* Calendar Modal */}
         <Calendar
           visible={showCalendar}
           onClose={() => setShowCalendar(false)}
           onSelectDate={(date: Date) => {
-            setFormData({ ...formData, dueDate: date });
+            setFormData({
+              ...formData,
+              dueDate: date,
+              dueDay: date.getDate().toString()
+            });
             setShowCalendar(false);
           }}
           selectedDate={formData.dueDate}
@@ -758,7 +759,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1,
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     elevation: 2,
     shadowColor: "#0F172A",
@@ -767,8 +768,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   unpaidCard: {
-    backgroundColor: "#EEF2FF",
-    borderColor: "#E0E7FF",
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FEF3C7",
   },
   overdueCard: {
     backgroundColor: "#FEF2F2",
@@ -781,7 +782,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#4F46E5",
+    color: "#D97706",
     marginBottom: 4,
     textTransform: "uppercase",
   },
@@ -792,9 +793,9 @@ const styles = StyleSheet.create({
     color: "#D97706",
   },
   summaryValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
-    color: "#312E81",
+    color: "#78350F",
   },
   overdueValue: {
     color: "#7F1D1D",
@@ -807,7 +808,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     marginHorizontal: 16,
     marginVertical: 8,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 4,
     borderWidth: 1,
     borderColor: "#E2E8F0",
@@ -816,10 +817,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     alignItems: "center",
-    borderRadius: 8,
+    borderRadius: 12,
   },
   activeTab: {
-    backgroundColor: "#6366F1",
+    backgroundColor: "#D97706",
   },
   tabText: {
     fontSize: 13,
@@ -840,101 +841,123 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyContainer: {
-    flex: 1,
+    paddingVertical: 40,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 32,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 48,
+    marginBottom: 12,
   },
   emptyText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#1E293B",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#64748B",
     textAlign: "center",
   },
   sectionContainer: {
     marginBottom: 16,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    marginTop: 8,
+  },
   sectionHeader: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
-    marginBottom: 10,
-    marginTop: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderLeftWidth: 4,
+    borderRadius: 16, // Clean rounded card borders
+    marginBottom: 6, // Shrunk gap between cards (6px)
+    padding: 10, // Compact padding
+    borderLeftWidth: 5,
     borderWidth: 1,
     borderColor: "#F1F5F9",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 10,
+    alignItems: "center",
+    marginBottom: 8,
   },
   billInfo: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
+  billIconContainer: {
+    width: 32, // Tighter 32px size icon container
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
   billIcon: {
-    fontSize: 28,
-    marginRight: 12,
+    fontSize: 16,
   },
   billDetails: {
     flex: 1,
   },
   billName: {
-    fontSize: 15,
+    fontSize: 13, // 13px throughout card details
     fontWeight: "700",
     color: "#1E293B",
-    marginBottom: 2,
+    marginBottom: 1,
   },
   billType: {
-    fontSize: 11,
+    fontSize: 11, // Subtext stays slightly smaller for contrast
     color: "#64748B",
-    fontWeight: "600",
+    fontWeight: "500",
   },
   billAmount: {
-    fontSize: 16,
+    fontSize: 13, // 13px throughout card details
     fontWeight: "800",
   },
   cardBody: {
     borderTopWidth: 1,
     borderTopColor: "#F1F5F9",
-    paddingTop: 10,
+    paddingTop: 8,
   },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   infoLabel: {
-    fontSize: 12,
+    fontSize: 12, // Compact card font layout
     color: "#64748B",
     fontWeight: "500",
   },
   infoValue: {
-    fontSize: 12,
+    fontSize: 13, // 13px card texts
     color: "#1E293B",
     fontWeight: "600",
   },
@@ -943,56 +966,28 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignSelf: "flex-start",
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    marginBottom: 10,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 6,
     borderWidth: 0.5,
-    borderColor: "#BFDBFE",
+    borderColor: "#FCD34D",
   },
   badgeText: {
     fontSize: 10,
-    color: "#1E40AF",
+    color: "#92400E",
     fontWeight: "700",
-  },
-  progressBarBg: {
-    height: 4,
-    backgroundColor: "#F1F5F9",
-    borderRadius: 2,
-    overflow: "hidden",
-    marginVertical: 10,
-  },
-  progressBarFill: {
-    height: "100%",
-    borderRadius: 2,
-  },
-  reminderBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    borderColor: "#A7F3D0",
-    borderWidth: 0.5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  reminderBannerText: {
-    fontSize: 11,
-    color: "#047857",
-    fontWeight: "600",
   },
   cardActions: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     marginTop: 6,
   },
   actionBtn: {
-    flex: 1.2,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -1006,27 +1001,21 @@ const styles = StyleSheet.create({
   },
   payBtnText: {
     color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700",
   },
   unpayBtn: {
     backgroundColor: "#E2E8F0",
   },
   unpayBtnText: {
     color: "#475569",
-    fontSize: 11,
-    fontWeight: "700",
   },
   secondaryBtn: {
     flex: 1,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: "#FFFBEB",
     borderWidth: 0.5,
-    borderColor: "#BFDBFE",
+    borderColor: "#FCD34D",
   },
   secondaryBtnText: {
-    color: "#2563EB",
-    fontSize: 11,
-    fontWeight: "700",
+    color: "#D97706",
   },
   deleteBtn: {
     flex: 1,
@@ -1036,175 +1025,215 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     color: "#DC2626",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  fab: {
-    position: "absolute",
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#6366F1",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
-  },
-  fabIcon: {
-    fontSize: 28,
-    color: "#FFFFFF",
-    fontWeight: "300",
   },
   bottomPadding: {
-    height: 100,
+    height: 40,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "flex-end",
+
+  // Shrunk Trigger Pill Styles (Flush Left, no full-width card)
+  inlineFormContainer: {
+    marginBottom: 12,
+    alignItems: "flex-start", // Left flush alignment
   },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "90%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#1E293B",
-  },
-  closeButton: {
-    fontSize: 20,
-    color: "#64748B",
-    fontWeight: "500",
-  },
-  modalBody: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#475569",
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  input: {
+  pillTriggerBtn: {
+    backgroundColor: "#FEF3C7", // Soft amber
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    backgroundColor: "#FFFFFF",
-    color: "#1E293B",
-    justifyContent: "center",
-  },
-  inputText: {
-    fontSize: 14,
-    color: "#1E293B",
-  },
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 14,
-    paddingVertical: 4,
-  },
-  saveButton: {
-    backgroundColor: "#6366F1",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 24,
-    marginBottom: 10,
-  },
-  saveButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  calendarOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  calendarModal: {
-    backgroundColor: "#FFFFFF",
+    borderColor: "#D97706", // Amber border
     borderRadius: 20,
-    width: "100%",
-    maxWidth: 360,
-    overflow: "hidden",
-  },
-  calendarHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  calendarTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  typeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     marginTop: 4,
-    marginBottom: 10,
+    alignSelf: "flex-start", // Only spans content width
   },
-  typeGridChip: {
-    width: "31%", // Fits 3 columns nicely
-    aspectRatio: 1.1,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
+  pillTriggerBtnActive: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#94A3B8",
+  },
+  pillTriggerBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#D97706",
+  },
+  pillTriggerBtnTextActive: {
+    color: "#475569",
+  },
+
+  // Simplified Form Card Layout
+  inlineFormCard: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#D97706",
+    padding: 14,
+    marginTop: 10,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  // Form Labels: 11px and lighter gray color to reduce weight
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
+    marginBottom: 4,
+    marginTop: 6,
+  },
+  inputField: {
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    justifyContent: "center",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 13,
+    backgroundColor: "#F8FAFC",
+    color: "#1E293B",
+  },
+  currencyInputContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    padding: 4,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 8,
   },
-  typeGridChipSelected: {
-    backgroundColor: "#EEF2FF",
-    borderColor: "#6366F1",
-  },
-  typeGridIcon: {
-    fontSize: 22,
-    marginBottom: 4,
-  },
-  typeGridText: {
-    fontSize: 11,
+  currencyPrefix: {
+    fontSize: 13,
+    fontWeight: "700",
     color: "#64748B",
+    marginRight: 4,
+  },
+  currencyInputField: {
+    flex: 1,
+    paddingVertical: 6,
+    fontSize: 13,
+    color: "#1E293B",
+  },
+  dateSelectorBtn: {
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: "center",
+  },
+  dateSelectorText: {
+    fontSize: 13,
+    color: "#1E293B",
     fontWeight: "600",
   },
-  typeGridTextSelected: {
-    color: "#4F46E5",
+
+  // Horizontal scroll row for type chips
+  horizontalChipsScroll: {
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  horizontalChipsContainer: {
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 2,
+  },
+  horizontalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  horizontalChipSelected: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#D97706",
+  },
+  horizontalChipIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  horizontalChipText: {
+    fontSize: 11,
+    color: "#475569",
     fontWeight: "700",
+  },
+  horizontalChipTextSelected: {
+    color: "#78350F",
+  },
+
+  // Date Presets
+  datePresetRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  presetChip: {
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  presetChipText: {
+    fontSize: 10,
+    color: "#475569",
+    fontWeight: "600",
+  },
+
+  // Simplified Form actions
+  formActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 10,
+  },
+  saveFormBtn: {
+    backgroundColor: "#D97706",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveFormBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
   },
   formRow: {
     flexDirection: "row",
-    marginTop: 8,
+    marginBottom: 10,
   },
   formCol: {
     flexDirection: "column",
+  },
+  sharedToggleRow: {
+    flexDirection: "row",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  toggleChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  toggleChipActive: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#D97706",
+  },
+  toggleChipText: {
+    fontSize: 11,
+    color: "#475569",
+    fontWeight: "700",
+  },
+  toggleChipTextActive: {
+    color: "#78350F",
   },
 });
