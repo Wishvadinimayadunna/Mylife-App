@@ -254,9 +254,13 @@ export default function HomeScreen() {
         {/* ── Hero Banner ───────────────────────────────────────────── */}
         <View style={styles.hero}>
           {/* Avatar */}
-          <View style={styles.avatarWrap}>
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={() => router.push("/settings")}
+            activeOpacity={0.7}
+          >
             <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          </TouchableOpacity>
 
           {/* Date + greeting */}
           <Text style={styles.heroDate}>{formatDate(new Date())}</Text>
