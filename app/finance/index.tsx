@@ -1,32 +1,40 @@
 // ============================================
 // Finance Module - Income & Expense Tracker
-// Premium redesign with period pills, budget progress bar,
-// grouped transaction list, and themed modals.
+// Premium redesign conforming to solid visual guidelines,
+// font weight limits, and custom blue header stats.
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
 import financeService from "@/services/financeService";
 import { useAppStore } from "@/store/appStore";
 import {
-    ExpenseCategoryType,
-    FinanceSummary,
-    FinanceTransaction,
-    IncomeCategoryType,
-    TransactionType,
+  ExpenseCategoryType,
+  FinanceSummary,
+  FinanceTransaction,
+  IncomeCategoryType,
+  TransactionType,
 } from "@/types";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState, useRef } from "react";
 import {
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
+// Colors conforming to design system tokens
+const COLOR_BLUE = "#2563EB";
+const COLOR_BORDER = "#E5E7EB";
+const COLOR_BG = "#F5F7FA";
+const COLOR_CARD = "#FFFFFF";
+const COLOR_DARK = "#1F2937";
+const COLOR_MUTED = "#6B7280";
 
 // Category with Tabler Icon mappings
 const INCOME_CATEGORIES_WITH_ICONS: { name: IncomeCategoryType; icon: string }[] = [
@@ -53,8 +61,8 @@ const EXPENSE_CATEGORIES_WITH_ICONS: { name: ExpenseCategoryType; icon: string }
   { name: "Other", icon: "ti-dots" },
 ];
 
-// Tabler icons to MaterialCommunityIcons mapping to avoid external package build breakages
-const TABLER_TO_MCI_MAP: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
+// Tabler icons mapping
+const TABLER_TO_MCI_MAP: Record<string, any> = {
   "ti-briefcase": "briefcase-outline",
   "ti-building": "office-building-outline",
   "ti-device-laptop": "laptop",
@@ -84,6 +92,8 @@ interface GroupedTransactions {
 
 export default function FinanceScreen() {
   const { profile } = useAppStore();
+  const router = useRouter();
+  
   const [todaySummary, setTodaySummary] = useState<FinanceSummary>({
     totalIncome: 0,
     totalExpense: 0,
@@ -358,6 +368,11 @@ export default function FinanceScreen() {
 
   const formatCurrency = (value: number) => `Rs. ${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+  const formatCurrencyCompact = (value: number) => {
+    if (value >= 100000) return `Rs. ${(value / 1000).toFixed(0)}k`;
+    return `Rs. ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  };
+
   const formatDate = (date: Date) => {
     const d = new Date(date);
     const today = new Date();
@@ -603,37 +618,58 @@ export default function FinanceScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "Finance", headerShown: true }} />
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      {/* PREMIUM SOLID BLUE HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+          <Text style={styles.backTxt}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Finance</Text>
+          <Text style={styles.headerSub}>
+            Income & Expense Tracker
+          </Text>
+        </View>
+        
+        {/* Header Stats Chips Row */}
+        <View style={styles.headerStatsRow}>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatCount}>{formatCurrencyCompact(todaySummary.totalIncome)}</Text>
+            <Text style={styles.headerStatLabel}>In</Text>
+          </View>
+          <View style={styles.headerStatChip}>
+            <Text style={styles.headerStatCount}>{formatCurrencyCompact(todaySummary.totalExpense)}</Text>
+            <Text style={styles.headerStatLabel}>Out</Text>
+          </View>
+        </View>
+      </View>
+
       <View style={styles.container}>
-        {/* Sticky Period Pill Selector */}
-        <View style={styles.viewModeContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.viewModeRow}>
-              {(["today", "week", "month", "custom"] as ViewMode[]).map((mode) => {
-                const isActive = viewMode === mode;
-                const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
-                return (
-                  <TouchableOpacity
-                    key={mode}
-                    style={[
-                      styles.viewModeButton,
-                      isActive && styles.viewModeButtonActive,
-                    ]}
-                    onPress={() => {
-                      setViewMode(mode);
-                      if (mode === "custom") {
-                        if (!customStartDate) setCustomStartDate(new Date());
-                        if (!customEndDate) setCustomEndDate(new Date());
-                      }
-                    }}
-                  >
-                    <Text style={[styles.viewModeText, isActive && styles.viewModeTextActive]}>
-                      {modeLabel}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+        {/* Segmented Period Pill Selector */}
+        <View style={styles.tabContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
+            {(["today", "week", "month", "custom"] as ViewMode[]).map((mode) => {
+              const isActive = viewMode === mode;
+              const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.tabPill, isActive && styles.tabPillActive]}
+                  onPress={() => {
+                    setViewMode(mode);
+                    if (mode === "custom") {
+                      if (!customStartDate) setCustomStartDate(new Date());
+                      if (!customEndDate) setCustomEndDate(new Date());
+                    }
+                  }}
+                >
+                  <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>
+                    {modeLabel}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -772,7 +808,7 @@ export default function FinanceScreen() {
                   No transactions for this period.
                 </Text>
                 <Text style={styles.emptyTransactionsSubtext}>
-                  Tap + to add one.
+                  Tap Add Income/Expense to log transactions.
                 </Text>
               </View>
             ) : (
@@ -800,7 +836,7 @@ export default function FinanceScreen() {
                 <Text style={styles.modalCancel}>Cancel</Text>
               </TouchableOpacity>
               <Text style={styles.modalTitle}>
-                {editingTransaction ? "Edit" : "Add"} {isIncome ? "income" : "expense"}
+                {editingTransaction ? "Edit" : "Add"} {isIncome ? "Income" : "Expense"}
               </Text>
               <TouchableOpacity
                 style={[styles.modalHeaderSaveBtn, { backgroundColor: modalTheme.saveBtnBg }]}
@@ -893,7 +929,7 @@ export default function FinanceScreen() {
                           styles.categoryGridItem,
                           isActive
                             ? { borderColor: modalTheme.chipSelectedBorder, backgroundColor: modalTheme.chipSelectedBg }
-                            : { borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" },
+                            : { borderColor: COLOR_BORDER, backgroundColor: "#F9FAFB" },
                         ]}
                         onPress={() => {
                           if (isIncome) {
@@ -913,7 +949,7 @@ export default function FinanceScreen() {
                         <Text
                           style={[
                             styles.categoryGridText,
-                            isActive && { color: modalTheme.chipSelectedText, fontWeight: "600" },
+                            isActive && { color: modalTheme.chipSelectedText, fontWeight: "500" },
                           ]}
                           numberOfLines={1}
                           ellipsizeMode="tail"
@@ -985,56 +1021,114 @@ export default function FinanceScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    backgroundColor: COLOR_BLUE,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  back: {
+    marginRight: 14,
+    padding: 4,
+  },
+  backTxt: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "500",
+  },
+  headerTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "500",
+  },
+  headerSub: {
+    color: "#EFF6FF",
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "400",
+  },
+  headerStatsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  headerStatChip: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  headerStatCount: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  headerStatLabel: {
+    color: "#EFF6FF",
+    fontSize: 10,
+    fontWeight: "400",
+  },
+
+  // Segmented tab styles
+  tabContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 2,
+    backgroundColor: COLOR_BG,
+  },
+  tabScroll: {
+    backgroundColor: "#E5E7EB",
+    borderRadius: 24,
+    padding: 3,
+    flexDirection: "row",
+    gap: 2,
+  },
+  tabPill: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabPillActive: {
+    backgroundColor: COLOR_CARD,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabPillText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "400",
+  },
+  tabPillTextActive: {
+    color: COLOR_DARK,
+    fontWeight: "500",
+  },
+
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLOR_BG,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLOR_BG,
   },
   emptyText: {
     fontSize: 15,
-    color: "#6B7280",
+    color: COLOR_MUTED,
     fontWeight: "500",
   },
   scrollContent: {
     paddingBottom: 24,
-  },
-  viewModeContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
-    backgroundColor: "#F8FAFC",
-  },
-  viewModeRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  viewModeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  viewModeButtonActive: {
-    backgroundColor: "#EEEDFE",
-    borderColor: "#AFA9EC",
-  },
-  viewModeText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#64748B",
-  },
-  viewModeTextActive: {
-    color: "#3C3489",
-    fontWeight: "600",
   },
   dateRangeContainer: {
     flexDirection: "row",
@@ -1042,48 +1136,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     gap: 8,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLOR_BG,
   },
   dateRangeButton: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: COLOR_CARD,
     padding: 10,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
   },
   dateRangeLabel: {
     fontSize: 11,
-    color: "#64748B",
+    color: COLOR_MUTED,
     marginBottom: 2,
     textTransform: "uppercase",
-    fontWeight: "600",
+    fontWeight: "500",
   },
   dateRangeValue: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#1E293B",
+    fontWeight: "500",
+    color: COLOR_DARK,
   },
   dateRangeSeparator: {
     fontSize: 16,
-    color: "#64748B",
-    fontWeight: "bold",
+    color: COLOR_MUTED,
+    fontWeight: "500",
   },
   summaryCard: {
-    backgroundColor: "white",
+    backgroundColor: COLOR_CARD,
     marginHorizontal: 16,
     marginVertical: 12,
     padding: 20,
-    borderRadius: 24,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    elevation: 3,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
   },
   summaryTitle: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     color: "#94A3B8",
     letterSpacing: 1.0,
     marginBottom: 8,
@@ -1094,8 +1185,8 @@ const styles = StyleSheet.create({
   },
   balanceAmount: {
     fontSize: 32,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontWeight: "500",
+    color: COLOR_DARK,
     letterSpacing: -0.5,
   },
   plStatusContainer: {
@@ -1113,7 +1204,7 @@ const styles = StyleSheet.create({
   },
   plBadgeText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   pctChangeBadge: {
     flexDirection: "row",
@@ -1125,13 +1216,13 @@ const styles = StyleSheet.create({
   },
   pctChangeText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopWidth: 0.5,
+    borderTopColor: COLOR_BORDER,
     paddingTop: 16,
     marginBottom: 16,
   },
@@ -1145,22 +1236,22 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statDivider: {
-    width: 1,
+    width: 0.5,
     height: 36,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: COLOR_BORDER,
     marginHorizontal: 16,
   },
   statLabel: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   statValue: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   progressBarSection: {
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopWidth: 0.5,
+    borderTopColor: COLOR_BORDER,
     paddingTop: 12,
   },
   progressBarLabelRow: {
@@ -1171,12 +1262,12 @@ const styles = StyleSheet.create({
   },
   progressBarLabel: {
     fontSize: 12,
-    color: "#64748B",
+    color: COLOR_MUTED,
     fontWeight: "500",
   },
   progressBarValue: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   progressBarBg: {
     height: 6,
@@ -1194,8 +1285,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
     gap: 10,
   },
   alertBody: {
@@ -1218,7 +1310,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     minHeight: 48,
-    borderRadius: 16,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
   },
   incomeActionBtn: {
     backgroundColor: "#EAF3DE",
@@ -1228,15 +1322,15 @@ const styles = StyleSheet.create({
   },
   quickActionText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   transactionsSection: {
     paddingHorizontal: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
-    color: "#0F172A",
+    fontWeight: "500",
+    color: COLOR_DARK,
     marginBottom: 14,
   },
   sectionGroup: {
@@ -1244,7 +1338,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     color: "#94A3B8",
     letterSpacing: 1.2,
     marginBottom: 8,
@@ -1253,10 +1347,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 32,
-    backgroundColor: "white",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
+    backgroundColor: COLOR_CARD,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
   },
   emptyIconCircle: {
     width: 56,
@@ -1269,26 +1363,22 @@ const styles = StyleSheet.create({
   },
   emptyTransactionsText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#1E293B",
+    fontWeight: "500",
+    color: COLOR_DARK,
     marginBottom: 4,
   },
   emptyTransactionsSubtext: {
     fontSize: 12,
-    color: "#64748B",
+    color: COLOR_MUTED,
+    fontWeight: "400",
   },
   transactionCard: {
-    backgroundColor: "white",
-    borderRadius: 20,
+    backgroundColor: COLOR_CARD,
+    borderRadius: 12,
     padding: 14,
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 1,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
   },
   transactionCardMain: {
     flexDirection: "row",
@@ -1308,42 +1398,44 @@ const styles = StyleSheet.create({
   },
   transactionCategory: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontWeight: "500",
+    color: COLOR_DARK,
     marginBottom: 2,
   },
   transactionNotes: {
     fontSize: 11,
-    color: "#64748B",
+    color: COLOR_MUTED,
+    fontWeight: "400",
   },
   transactionRight: {
     alignItems: "flex-end",
   },
   transactionAmountText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 2,
   },
   transactionDateSubtext: {
     fontSize: 11,
     color: "#94A3B8",
+    fontWeight: "400",
   },
   transactionActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 8,
     marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F8FAFC",
+    borderTopWidth: 0.5,
+    borderTopColor: COLOR_BORDER,
     paddingTop: 8,
   },
   actionPillBtn: {
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "white",
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    backgroundColor: COLOR_CARD,
     minWidth: 54,
     alignItems: "center",
   },
@@ -1352,8 +1444,8 @@ const styles = StyleSheet.create({
   },
   actionPillBtnText: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "#64748B",
+    fontWeight: "500",
+    color: COLOR_MUTED,
   },
   deletePillBtnText: {
     color: "#EF4444",
@@ -1369,31 +1461,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    backgroundColor: COLOR_CARD,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLOR_BORDER,
   },
   modalCancel: {
     fontSize: 15,
-    color: "#64748B",
+    color: COLOR_MUTED,
     fontWeight: "500",
   },
   modalTitle: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
+    fontWeight: "500",
+    color: COLOR_DARK,
     textTransform: "capitalize",
   },
   modalHeaderSaveBtn: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   modalHeaderSaveText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   modalContent: {
     flex: 1,
@@ -1401,16 +1493,16 @@ const styles = StyleSheet.create({
   },
   typeToggle: {
     flexDirection: "row",
-    backgroundColor: "#F1F5F9",
-    borderRadius: 16,
-    padding: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 3,
     marginBottom: 20,
   },
   typeButton: {
     flex: 1,
     paddingVertical: 10,
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 10,
   },
   typeButtonIncomeActive: {
     backgroundColor: "#10B981",
@@ -1420,8 +1512,8 @@ const styles = StyleSheet.create({
   },
   typeButtonText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#64748B",
+    fontWeight: "500",
+    color: COLOR_MUTED,
   },
   typeButtonTextActive: {
     color: "white",
@@ -1429,9 +1521,9 @@ const styles = StyleSheet.create({
   amountDisplayCard: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 16,
-    borderWidth: 1.5,
+    borderWidth: 0.5,
     marginBottom: 20,
     gap: 12,
   },
@@ -1447,7 +1539,7 @@ const styles = StyleSheet.create({
   },
   amountCatLabel: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
     marginBottom: 2,
   },
   amountInputRow: {
@@ -1456,7 +1548,7 @@ const styles = StyleSheet.create({
   },
   amountCurrencyLabel: {
     fontSize: 22,
-    fontWeight: "600",
+    fontWeight: "500",
     marginRight: 2,
   },
   amountDisplayInput: {
@@ -1470,8 +1562,8 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontWeight: "500",
+    color: COLOR_DARK,
     marginBottom: 10,
   },
   categoryGrid: {
@@ -1482,8 +1574,8 @@ const styles = StyleSheet.create({
   categoryGridItem: {
     width: "23.2%",
     aspectRatio: 1,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 0.5,
     alignItems: "center",
     justifyContent: "center",
     padding: 4,
@@ -1493,8 +1585,9 @@ const styles = StyleSheet.create({
   },
   categoryGridText: {
     fontSize: 9,
-    color: "#64748B",
+    color: COLOR_MUTED,
     textAlign: "center",
+    fontWeight: "400",
   },
   dateNotesRow: {
     flexDirection: "row",
@@ -1507,28 +1600,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "white",
+    backgroundColor: COLOR_CARD,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
     minWidth: 130,
   },
   datePillText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#1E293B",
+    fontWeight: "500",
+    color: COLOR_DARK,
   },
   notesInline: {
     flex: 1,
-    backgroundColor: "white",
-    borderRadius: 24,
+    backgroundColor: COLOR_CARD,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
     fontSize: 14,
-    color: "#1E293B",
+    color: COLOR_DARK,
+    fontWeight: "400",
   },
 });
