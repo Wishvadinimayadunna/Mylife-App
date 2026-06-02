@@ -104,6 +104,7 @@ export interface MedicineReminder {
   dosage?: string;
   reminderTime: string; // e.g., "08:00"
   isEnabled: boolean;
+  takenDates?: string[]; // Array of "YYYY-MM-DD" strings for daily compliance
   createdAt: Date;
   updatedAt: Date;
 }
@@ -168,6 +169,29 @@ export interface PeriodRecord {
   isPrivate: true; // Always true — never shared
   createdAt: Date;
   updatedAt: Date;
+}
+
+// ============================================
+// WELLNESS QUICK LOGS
+// ============================================
+
+export interface WaterLog {
+  id: string;
+  profileID: string;
+  amountML: number; // ml per entry (default 250)
+  recordedAt: Date;
+  createdAt: Date;
+}
+
+export type SleepQuality = "Poor" | "Fair" | "Good" | "Excellent";
+
+export interface SleepLog {
+  id: string;
+  profileID: string;
+  durationHours: number;
+  quality: SleepQuality;
+  recordedAt: Date;
+  createdAt: Date;
 }
 
 // ============================================

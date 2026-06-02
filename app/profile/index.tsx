@@ -140,7 +140,9 @@ export default function ProfileScreen() {
         <View style={styles.detailsContainer}>
           {/* Name */}
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>Name</Text>
+            <Text style={styles.label}>
+              Name{isEditing ? <Text style={styles.requiredStar}> *</Text> : null}
+            </Text>
             {isEditing ? (
               <TextInput
                 style={styles.input}
@@ -181,7 +183,9 @@ export default function ProfileScreen() {
 
           {/* Email */}
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>
+              Email{isEditing ? <Text style={styles.requiredStar}> *</Text> : null}
+            </Text>
             {isEditing ? (
               <TextInput
                 style={styles.input}
@@ -198,7 +202,9 @@ export default function ProfileScreen() {
 
           {/* Phone */}
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>Phone</Text>
+            <Text style={styles.label}>
+              Phone{isEditing ? <Text style={styles.requiredStar}> *</Text> : null}
+            </Text>
             {isEditing ? (
               <TextInput
                 style={styles.input}
@@ -244,7 +250,9 @@ export default function ProfileScreen() {
 
           {/* Address */}
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>Address</Text>
+            <Text style={styles.label}>
+              Address{isEditing ? <Text style={styles.requiredStar}> *</Text> : null}
+            </Text>
             {isEditing ? (
               <TextInput
                 style={[styles.input, styles.textArea]}
@@ -349,6 +357,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 8,
+  },
+  requiredStar: {
+    color: '#FF3B30',
   },
   value: {
     fontSize: 16,

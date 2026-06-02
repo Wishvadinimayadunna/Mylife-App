@@ -11,7 +11,10 @@ import {
     MedicineReminder,
     MoodRecord,
     PeriodRecord,
+    SleepLog,
+    SleepQuality,
     SymptomRecord,
+    WaterLog,
 } from "@/types";
 import apiClient from "@/utils/api";
 
@@ -313,6 +316,86 @@ const healthService = {
       await apiClient.delete(`/health/periods/${id}`);
     } catch (error) {
       console.error("Delete period error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // MEDICINE COMPLIANCE
+  // ============================================
+
+  async logMedicineTaken(id: string, date: string, taken: boolean): Promise<MedicineReminder> {
+    try {
+      const response = await apiClient.patch(`/health/medicines/${id}/taken`, { date, taken });
+      return response.data;
+    } catch (error) {
+      console.error("Log medicine taken error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // WATER LOG
+  // ============================================
+
+  async getWaterLogs(): Promise<WaterLog[]> {
+    try {
+      const response = await apiClient.get("/health/water");
+      return response.data;
+    } catch (error) {
+      console.error("Get water logs error:", error);
+      throw error;
+    }
+  },
+
+  async addWaterLog(amountML: number = 250): Promise<WaterLog> {
+    try {
+      const response = await apiClient.post("/health/water", { amountML, recordedAt: new Date() });
+      return response.data;
+    } catch (error) {
+      console.error("Add water log error:", error);
+      throw error;
+    }
+  },
+
+  async deleteWaterLog(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/health/water/${id}`);
+    } catch (error) {
+      console.error("Delete water log error:", error);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // SLEEP LOG
+  // ============================================
+
+  async getSleepLogs(): Promise<SleepLog[]> {
+    try {
+      const response = await apiClient.get("/health/sleep");
+      return response.data;
+    } catch (error) {
+      console.error("Get sleep logs error:", error);
+      throw error;
+    }
+  },
+
+  async addSleepLog(durationHours: number, quality: SleepQuality = "Good"): Promise<SleepLog> {
+    try {
+      const response = await apiClient.post("/health/sleep", { durationHours, quality, recordedAt: new Date() });
+      return response.data;
+    } catch (error) {
+      console.error("Add sleep log error:", error);
+      throw error;
+    }
+  },
+
+  async deleteSleepLog(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/health/sleep/${id}`);
+    } catch (error) {
+      console.error("Delete sleep log error:", error);
       throw error;
     }
   },
