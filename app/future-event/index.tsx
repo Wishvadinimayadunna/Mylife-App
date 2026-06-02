@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  NativeModules,
   Platform,
   ScrollView,
   StyleSheet,
@@ -42,11 +43,18 @@ const REMINDER_OPTIONS: { value: ReminderOption; label: string }[] = [
   { value: "same_day", label: "Same Day" },
 ];
 
-const VOICE_EXAMPLES = [
-  "meeting tomorrow at 3 PM",
-  "wedding on June 15 at 5 PM in Grand Hotel",
-  "John's birthday on March 10",
-];
+
+
+const TRIGGER_KEYWORDS: Record<EventType, string[]> = {
+  Birthday: ["birthday", "birth day", "bday", "b-day"],
+  Anniversary: ["anniversary", "wedding anniversary"],
+  Wedding: ["wedding", "marriage", "matrimony"],
+  Party: ["party", "celebration", "gathering", "dinner", "lunch", "get-together"],
+  Vacation: ["vacation", "trip", "flight", "travel", "holiday", "tour"],
+  Interview: ["interview", "job talk", "assessment"],
+  Meeting: ["meeting", "sync", "standup", "discussion", "call", "appointment"],
+  Other: [],
+};
 
 const EVENT_COLORS: Record<EventType, string> = {
   Birthday: "#F59E0B",
@@ -122,6 +130,11 @@ export default function FutureEventScreen() {
   const [voiceInputText, setVoiceInputText] = useState("");
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
 
+  // Real voice recognition state (Option B)
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [webRecognitionInstance, setWebRecognitionInstance] = useState<any>(null);
+
   // Manual Add Composer state
   const [composerTitle, setComposerTitle] = useState("");
   const [composerType, setComposerType] = useState<EventType>("Other");
@@ -162,6 +175,84 @@ export default function FutureEventScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
+  useEffect(() => {
+    const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
+
+    if (Platform.OS !== "web" && isNativeModuleAvailable) {
+      const Voice = require("@react-native-voice/voice").default;
+      
+      const onSpeechStart = () => {
+        setIsListening(true);
+        setVoiceError(null);
+      };
+      
+      const onSpeechEnd = () => {
+        setIsListening(false);
+      };
+      
+      const onSpeechError = (e: any) => {
+        console.error("Native onSpeechError:", e);
+        setVoiceError(e.error?.message || "Speech recognition error");
+        setIsListening(false);
+      };
+      
+      const onSpeechResults = (e: any) => {
+        if (e.value && e.value.length > 0) {
+          const txt = e.value[0];
+          setVoiceInputText(txt);
+          const parsed = parseNaturalLanguageEvent(txt);
+          setVoicePreview(parsed);
+        }
+      };
+      
+      Voice.onSpeechStart = onSpeechStart;
+      Voice.onSpeechEnd = onSpeechEnd;
+      Voice.onSpeechError = onSpeechError;
+      Voice.onSpeechResults = onSpeechResults;
+      
+      return () => {
+        Voice.destroy().then(() => {
+          Voice.removeAllListeners();
+        }).catch((err: any) => {
+          console.error("Voice destroy error:", err);
+        });
+      };
+    } else {
+      // Web speech recognition setup
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const rec = new SpeechRecognition();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.lang = "en-US";
+        
+        rec.onstart = () => {
+          setIsListening(true);
+          setVoiceError(null);
+        };
+        
+        rec.onend = () => {
+          setIsListening(false);
+        };
+        
+        rec.onerror = (e: any) => {
+          console.error("Web SpeechRecognition error:", e);
+          setVoiceError(e.error || "Speech recognition error");
+          setIsListening(false);
+        };
+        
+        rec.onresult = (e: any) => {
+          const txt = e.results[0][0].transcript;
+          setVoiceInputText(txt);
+          const parsed = parseNaturalLanguageEvent(txt);
+          setVoicePreview(parsed);
+        };
+        
+        setWebRecognitionInstance(rec);
+      }
+    }
+  }, []);
+
   const loadEvents = async () => {
     if (!profile) return;
     setLoading(true);
@@ -185,14 +276,14 @@ export default function FutureEventScreen() {
     let location = "";
     let isRecurringYearly = false;
 
-    // Detect type
-    if (lower.includes("birthday")) type = "Birthday";
-    else if (lower.includes("anniversary")) type = "Anniversary";
-    else if (lower.includes("wedding")) type = "Wedding";
-    else if (lower.includes("party")) type = "Party";
-    else if (lower.includes("vacation") || lower.includes("trip")) type = "Vacation";
-    else if (lower.includes("interview")) type = "Interview";
-    else if (lower.includes("meeting")) type = "Meeting";
+    // Detect type using trigger keywords
+    for (const key of Object.keys(TRIGGER_KEYWORDS) as EventType[]) {
+      const words = TRIGGER_KEYWORDS[key];
+      if (words.some((word) => lower.includes(word))) {
+        type = key;
+        break;
+      }
+    }
 
     // Detect Location "in [location]"
     const inMatch = text.match(/\bin\s+([^,.]+)/i);
@@ -222,10 +313,8 @@ export default function FutureEventScreen() {
     titleCandidate = titleCandidate.replace(/\btomorrow.*$/i, "");
     titleCandidate = titleCandidate.replace(/\btoday.*$/i, "");
     
-    title = titleCandidate.trim();
-    if (!title) {
-      title = type === "Other" ? "Event" : `${type} Event`;
-    }
+    const trimmed = titleCandidate.trim();
+    title = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : (type === "Other" ? "Event" : `${type} Event`);
 
     // Set Yearly Recurrence for birthday/anniversary
     if (type === "Birthday" || type === "Anniversary") {
@@ -356,15 +445,60 @@ export default function FutureEventScreen() {
     return normalizedDate;
   };
 
-  const startVoiceRecognition = () => {
-    Alert.alert(
-      "🎤 Voice Input Ready",
-      Platform.select({
-        ios: "Please use the microphone icon on your device keyboard to speak the event details.",
-        android: "Tap the microphone icon on your keyboard to speak details.",
-        default: "Use your device mic to dictate text.",
-      })
-    );
+  const startVoiceRecognition = async () => {
+    setVoiceError(null);
+    if (isListening) {
+      await stopVoiceRecognition();
+      return;
+    }
+    
+    if (Platform.OS === "web") {
+      if (webRecognitionInstance) {
+        try {
+          webRecognitionInstance.start();
+        } catch (e) {
+          console.error("Failed to start web recognition:", e);
+        }
+      } else {
+        Alert.alert("Not Supported", "Speech recognition is not supported in this browser.");
+      }
+    } else {
+      const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
+      if (!isNativeModuleAvailable) {
+        Alert.alert(
+          "🎤 Keyboard Mic Fallback (Expo Go)",
+          "Direct microphone recording is not supported in standard Expo Go. Please use the microphone icon on your device keyboard to dictate text instead."
+        );
+        return;
+      }
+      try {
+        const Voice = require("@react-native-voice/voice").default;
+        await Voice.start("en-US");
+      } catch (e: any) {
+        console.error("Voice start error:", e);
+        Alert.alert("Error", "Could not start voice recognition: " + (e.message || e));
+      }
+    }
+  };
+
+  const stopVoiceRecognition = async () => {
+    if (Platform.OS === "web") {
+      if (webRecognitionInstance) {
+        try {
+          webRecognitionInstance.stop();
+        } catch (e) {
+          console.error("Failed to stop web recognition:", e);
+        }
+      }
+    } else {
+      try {
+        const Voice = require("@react-native-voice/voice").default;
+        await Voice.stop();
+      } catch (e) {
+        console.error("Voice stop error:", e);
+      }
+    }
+    setIsListening(false);
   };
 
   // Submit parsed Voice Template
@@ -842,24 +976,7 @@ export default function FutureEventScreen() {
               
               {activePanel === 'voice' && (
                 <View style={styles.panelContent}>
-                  <Text style={styles.sectionLabelSmall}>Quick-Tap Examples:</Text>
-                  <View style={styles.examplesRow}>
-                    {VOICE_EXAMPLES.map((example, idx) => (
-                      <TouchableOpacity 
-                        key={idx} 
-                        style={styles.exampleChip}
-                        onPress={() => {
-                          setVoiceInputText(example);
-                          const parsed = parseNaturalLanguageEvent(example);
-                          setVoicePreview(parsed);
-                        }}
-                      >
-                        <Text style={styles.exampleChipText}>"{example}"</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
 
-                  <Text style={styles.sectionLabelSmall}>Or type/speak here:</Text>
                   <View style={styles.voiceInputWrapper}>
                     <TextInput
                       style={styles.voiceTextInput}
@@ -877,12 +994,24 @@ export default function FutureEventScreen() {
                       placeholderTextColor="#9CA3AF"
                     />
                     <TouchableOpacity 
-                      style={styles.inlineMicrophoneBtn}
+                      style={[styles.inlineMicrophoneBtn, isListening && styles.inlineMicrophoneBtnListening]}
                       onPress={startVoiceRecognition}
                     >
-                      <MaterialCommunityIcons name="microphone" size={18} color="#FFF" />
+                      <MaterialCommunityIcons name={isListening ? "stop" : "microphone"} size={18} color="#FFF" />
                     </TouchableOpacity>
                   </View>
+
+                  {isListening && (
+                    <View style={styles.listeningContainer}>
+                      <ActivityIndicator size="small" color="#7C3AED" />
+                      <Text style={styles.listeningText}>Listening... Speak now.</Text>
+                    </View>
+                  )}
+                  {voiceError && (
+                    <View style={styles.voiceErrorContainer}>
+                      <Text style={styles.voiceErrorText}>⚠️ {voiceError}</Text>
+                    </View>
+                  )}
 
                   {/* Live Parsed Interpretation Preview Card */}
                   {voicePreview && (
@@ -1719,6 +1848,38 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
+  },
+  inlineMicrophoneBtnListening: {
+    backgroundColor: "#DC2626",
+  },
+  listeningContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+    backgroundColor: "#F5F3FF",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  listeningText: {
+    fontSize: 13,
+    color: "#6D28D9",
+    fontWeight: "500",
+  },
+  voiceErrorContainer: {
+    marginBottom: 16,
+    backgroundColor: "#FEF2F2",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+  },
+  voiceErrorText: {
+    fontSize: 13,
+    color: "#B91C1C",
+    fontWeight: "500",
   },
 
   // Interpretation Preview Card

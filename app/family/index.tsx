@@ -1,5 +1,5 @@
 // ============================================
-// Family Module - Family Member Management
+// Family Module (UX Aligned with To-Do & Utility)
 // Add, edit, view family members with birthday reminders
 // ============================================
 
@@ -7,127 +7,227 @@ import Calendar from "@/components/ui/calendar";
 import familyService from "@/services/familyService";
 import { useAppStore } from "@/store/appStore";
 import { FamilyMember, RelationshipType } from "@/types";
-import { Stack } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Stack, useFocusEffect } from "expo-router";
+import React, { useCallback, useState, useRef } from "react";
 import {
-    Alert,
-    FlatList,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  LayoutAnimation,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  UIManager,
+  View,
+  Modal
 } from "react-native";
+
+// Enable LayoutAnimation for Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+type TabType = "all" | "immediate" | "extended";
+
+const RELATIONSHIPS: RelationshipType[] = [
+  "Wife",
+  "Husband",
+  "Son",
+  "Daughter",
+  "Father",
+  "Mother",
+  "Brother",
+  "Sister",
+  "Grandfather",
+  "Grandmother",
+  "Other"
+];
+
+const RELATIONSHIP_EMOJIS: Record<RelationshipType, string> = {
+  Wife: "👰",
+  Husband: "🤵",
+  Son: "👦",
+  Daughter: "👧",
+  Father: "👨",
+  Mother: "👩",
+  Brother: "👦",
+  Sister: "👧",
+  Grandfather: "👴",
+  Grandmother: "👵",
+  Other: "👤",
+};
 
 export default function FamilyScreen() {
   const { profile } = useAppStore();
-  const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showDOBCalendar, setShowDOBCalendar] = useState(false);
-  const [selectedDOB, setSelectedDOB] = useState<Date | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  // Form state
+  const [activeTab, setActiveTab] = useState<TabType>("all");
+  const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [filteredMembers, setFilteredMembers] = useState<FamilyMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+
+  // Modals Visibility
+  const [modalVisible, setModalVisible] = useState(false); // Edit modal
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showRelationSelector, setShowRelationSelector] = useState(false);
+  const [showGenderSelector, setShowGenderSelector] = useState(false);
+  const [selectorTarget, setSelectorTarget] = useState<"composer" | "modal">("composer");
+
+  // Composer States (Quick Add Card)
+  const [composerName, setComposerName] = useState("");
+  const [composerRelation, setComposerRelation] = useState<RelationshipType>("Wife");
+  const [composerDOB, setComposerDOB] = useState<Date | null>(null);
+  const [composerGender, setComposerGender] = useState<"Male" | "Female" | "Other">("Female");
+  const [composerPhone, setComposerPhone] = useState("");
+  const [composerEmail, setComposerEmail] = useState("");
+  const [composerAddress, setComposerAddress] = useState("");
+  const [composerReminderEnabled, setComposerReminderEnabled] = useState(true);
+
+  // Form State (for detailed Edit Modal)
+  const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
   const [formData, setFormData] = useState({
     fullName: "",
     relationship: "Wife" as RelationshipType,
-    dateOfBirth: "",
-    gender: "Male" as "Male" | "Female" | "Other",
+    dateOfBirth: new Date(),
+    gender: "Female" as "Male" | "Female" | "Other",
     phoneNumber: "",
     email: "",
     address: "",
     birthdayReminderEnabled: true,
   });
 
-  useEffect(() => {
-    console.log("Family screen loaded, profile:", profile);
-    loadFamilyMembers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile]);
-
   const loadFamilyMembers = async () => {
-    if (!profile) {
-      console.log("No profile available, skipping family members load");
-      return;
-    }
-    console.log("Loading family members for profile:", profile.id);
+    if (!profile) return;
     setLoading(true);
-    const data = await familyService.getFamilyMembers(profile.id);
-    console.log("Loaded family members:", data);
-    setMembers(data);
-    setLoading(false);
+    try {
+      const data = await familyService.getFamilyMembers(profile.id);
+      setMembers(data);
+
+      // Filter list based on active tab
+      let filtered: FamilyMember[] = [];
+      if (activeTab === "all") {
+        filtered = data;
+      } else if (activeTab === "immediate") {
+        filtered = data.filter(m => ["Wife", "Husband", "Son", "Daughter"].includes(m.relationship));
+      } else {
+        filtered = data.filter(m => ["Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother"].includes(m.relationship));
+      }
+      setFilteredMembers(filtered);
+    } catch (error) {
+      console.error("Load family members error:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const openAddModal = () => {
-    setEditingMember(null);
+  useFocusEffect(
+    useCallback(() => {
+      loadFamilyMembers();
+    }, [profile, activeTab]),
+  );
+
+  const resetComposer = () => {
+    setComposerName("");
+    setComposerRelation("Wife");
+    setComposerDOB(null);
+    setComposerGender("Female");
+    setComposerPhone("");
+    setComposerEmail("");
+    setComposerAddress("");
+    setComposerReminderEnabled(true);
+  };
+
+  const resetForm = () => {
     setFormData({
       fullName: "",
       relationship: "Wife",
-      dateOfBirth: "",
-      gender: "Male",
+      dateOfBirth: new Date(),
+      gender: "Female",
       phoneNumber: "",
       email: "",
       address: "",
       birthdayReminderEnabled: true,
     });
-    setIsModalVisible(true);
+    setEditingMember(null);
   };
 
+  // Handle Quick Add from Composer
+  const handleAddMember = async () => {
+    if (!profile) return;
+
+    if (!composerName || !composerPhone || !composerDOB) {
+      Alert.alert("Error", "Please fill in Name, Phone Number, and Date of Birth");
+      return;
+    }
+
+    try {
+      const memberData = {
+        profileID: profile.id,
+        fullName: composerName,
+        relationship: composerRelation,
+        dateOfBirth: composerDOB,
+        gender: composerGender,
+        phoneNumber: composerPhone,
+        email: composerEmail || undefined,
+        address: composerAddress || undefined,
+        birthdayReminderEnabled: composerReminderEnabled,
+      };
+
+      await familyService.addFamilyMember(memberData);
+      resetComposer();
+      loadFamilyMembers();
+      Alert.alert("Success", "Family member added successfully");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to add family member");
+    }
+  };
+
+  // Open Edit modal
   const openEditModal = (member: FamilyMember) => {
     setEditingMember(member);
     setFormData({
       fullName: member.fullName,
       relationship: member.relationship,
-      dateOfBirth: formatDateToInput(member.dateOfBirth),
+      dateOfBirth: new Date(member.dateOfBirth),
       gender: member.gender,
       phoneNumber: member.phoneNumber,
       email: member.email || "",
       address: member.address || "",
       birthdayReminderEnabled: member.birthdayReminderEnabled,
     });
-    setIsModalVisible(true);
+    setModalVisible(true);
   };
 
-  const handleSave = async () => {
-    if (!profile) return;
+  // Save member details from modal
+  const saveMember = async () => {
+    if (!profile || !editingMember) return;
 
     if (!formData.fullName || !formData.phoneNumber || !formData.dateOfBirth) {
-      Alert.alert("Error", "Please fill in all required fields");
+      Alert.alert("Error", "Please enter name, phone number and date of birth fields");
       return;
     }
 
     try {
-      const dateOfBirth = new Date(formData.dateOfBirth);
-
-      if (editingMember) {
-        await familyService.editFamilyMember(editingMember.id, {
-          ...formData,
-          dateOfBirth,
-        });
-      } else {
-        await familyService.addFamilyMember({
-          ...formData,
-          dateOfBirth,
-          profileID: profile.id,
-        });
-      }
-
-      setIsModalVisible(false);
+      await familyService.editFamilyMember(editingMember.id, formData);
+      setModalVisible(false);
+      resetForm();
       loadFamilyMembers();
-      Alert.alert(
-        "Success",
-        `Family member ${editingMember ? "updated" : "added"} successfully!`,
-      );
-    } catch {
-      Alert.alert("Error", "Failed to save family member");
+      Alert.alert("Success", "Family member details updated successfully");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to save details");
     }
   };
 
-  const handleDelete = (member: FamilyMember) => {
+  // Delete family member
+  const handleDeleteMember = (member: FamilyMember) => {
     Alert.alert(
       "Delete Family Member",
       `Are you sure you want to delete ${member.fullName}?`,
@@ -137,89 +237,228 @@ export default function FamilyScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await familyService.deleteFamilyMember(member.id);
-            loadFamilyMembers();
+            const success = await familyService.deleteFamilyMember(member.id);
+            if (success) {
+              loadFamilyMembers();
+            } else {
+              Alert.alert("Error", "Failed to delete family member");
+            }
           },
         },
-      ],
+      ]
     );
   };
 
+  // Toggle birthday reminder directly
   const toggleReminder = async (member: FamilyMember) => {
-    await familyService.setBirthdayReminder(
-      member.id,
-      !member.birthdayReminderEnabled,
+    try {
+      const success = await familyService.setBirthdayReminder(
+        member.id,
+        !member.birthdayReminderEnabled
+      );
+      if (success) {
+        loadFamilyMembers();
+      }
+    } catch (error) {
+      console.error("Toggle reminder error:", error);
+    }
+  };
+
+  // Computations for Header Card
+  const totalCount = members.length;
+  const remindersCount = members.filter(m => m.birthdayReminderEnabled).length;
+  const completionRate = totalCount > 0 ? (remindersCount / totalCount) * 100 : 0;
+
+  // Birthdays count in the next 30 days
+  const upcomingBirthdaysCount = members.filter(m => {
+    const dob = new Date(m.dateOfBirth);
+    const today = new Date();
+    const nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+    if (nextBday < today) {
+      nextBday.setFullYear(today.getFullYear() + 1);
+    }
+    const diffTime = nextBday.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 30;
+  }).length;
+
+  const getRelationClass = (relationship: RelationshipType) => {
+    if (["Wife", "Husband", "Son", "Daughter"].includes(relationship)) {
+      return "Immediate Family";
+    }
+    if (["Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother"].includes(relationship)) {
+      return "Extended Family";
+    }
+    return "Others";
+  };
+
+  const getFilteredAndGroupedMembers = () => {
+    const immediate = filteredMembers.filter(m => getRelationClass(m.relationship) === "Immediate Family");
+    const extended = filteredMembers.filter(m => getRelationClass(m.relationship) === "Extended Family");
+    const others = filteredMembers.filter(m => getRelationClass(m.relationship) === "Others");
+
+    const sections = [];
+    if (activeTab === "all" || activeTab === "immediate") {
+      if (immediate.length > 0) {
+        sections.push({ title: "Immediate Family", data: immediate, bgColor: "#DBEAFE", color: "#2563EB" });
+      }
+    }
+    if (activeTab === "all" || activeTab === "extended") {
+      if (extended.length > 0) {
+        sections.push({ title: "Extended Family", data: extended, bgColor: "#FEF3C7", color: "#D97706" });
+      }
+    }
+    if (activeTab === "all") {
+      if (others.length > 0) {
+        sections.push({ title: "Others", data: others, bgColor: "#F3F4F6", color: "#6B7280" });
+      }
+    }
+    return sections;
+  };
+
+  const openRelationSelectorModal = (target: "composer" | "modal") => {
+    setSelectorTarget(target);
+    setShowRelationSelector(true);
+  };
+
+  const openGenderSelectorModal = (target: "composer" | "modal") => {
+    setSelectorTarget(target);
+    setShowGenderSelector(true);
+  };
+
+  const openCalendarModal = (target: "composer" | "modal") => {
+    setSelectorTarget(target);
+    setShowCalendar(true);
+  };
+
+  const groupedSections = getFilteredAndGroupedMembers();
+
+  // Render Grouped Section
+  const renderGroupSection = (
+    title: string,
+    data: FamilyMember[],
+    bgColor: string,
+    color: string
+  ) => {
+    return (
+      <View key={title} style={styles.sectionContainer}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <View style={[styles.sectionBadge, { backgroundColor: bgColor }]}>
+            <Text style={[styles.sectionBadgeText, { color }]}>{data.length}</Text>
+          </View>
+        </View>
+        {data.map(renderMemberCard)}
+      </View>
     );
-    loadFamilyMembers();
   };
 
-  const formatDateToInput = (date: Date): string => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
+  // Render Single Member Card
+  const renderMemberCard = (member: FamilyMember) => {
+    const isExpanded = expandedMemberId === member.id;
+    const relationClass = getRelationClass(member.relationship);
+    
+    let leftBarColor = "#8B5CF6"; // Purple for others
+    if (relationClass === "Immediate Family") leftBarColor = "#2563EB"; // Blue
+    else if (relationClass === "Extended Family") leftBarColor = "#F59E0B"; // Amber
 
-  const formatDateDisplay = (date: Date): string => {
-    return new Date(date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
+    return (
+      <View key={member.id} style={styles.card}>
+        <View style={[styles.priorityBar, { backgroundColor: leftBarColor }]} />
+        <View style={styles.cardMain}>
+          <TouchableOpacity
+            style={styles.cardHeader}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setExpandedMemberId(isExpanded ? null : member.id);
+            }}
+            activeOpacity={0.7}
+          >
+            {/* Checkbox button (toggles birthday reminders status) */}
+            <TouchableOpacity
+              style={styles.checkbox}
+              onPress={() => toggleReminder(member)}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name={member.birthdayReminderEnabled ? "bell-ring-outline" : "bell-off-outline"}
+                size={22}
+                color={member.birthdayReminderEnabled ? "#F59E0B" : "#9CA3AF"}
+              />
+            </TouchableOpacity>
 
-  const getRelationshipEmoji = (relationship: RelationshipType): string => {
-    const map: Record<string, string> = {
-      Wife: "👰",
-      Husband: "🤵",
-      Son: "👦",
-      Daughter: "👧",
-      Father: "👨",
-      Mother: "👩",
-      Brother: "👦",
-      Sister: "👧",
-      Grandfather: "👴",
-      Grandmother: "👵",
-      Other: "👤",
-    };
-    return map[relationship] || "👤";
-  };
+            {/* Member Info */}
+            <View style={styles.taskInfo}>
+              <Text style={styles.taskTitle}>
+                {member.fullName}
+              </Text>
+              
+              {/* Meta Row */}
+              <View style={styles.taskMeta}>
+                <View style={styles.metaRow}>
+                  <Text style={styles.categoryIconText}>
+                    {RELATIONSHIP_EMOJIS[member.relationship] || "👤"}
+                  </Text>
+                  <Text style={styles.metaLabelText}>{member.relationship}</Text>
+                </View>
+                <View style={styles.metaRow}>
+                  <MaterialCommunityIcons name="phone" size={12} color="#6B7280" />
+                  <Text style={styles.metaLabelText}>{member.phoneNumber}</Text>
+                </View>
+                <View style={styles.metaRow}>
+                  <MaterialCommunityIcons name="cake-variant" size={12} color="#6B7280" />
+                  <Text style={styles.metaLabelText}>
+                    {new Date(member.dateOfBirth).toLocaleDateString()}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-  const renderMember = ({ item }: { item: FamilyMember }) => (
-    <TouchableOpacity
-      style={styles.memberCard}
-      onPress={() => openEditModal(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.memberInfo}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarEmoji}>
-            {getRelationshipEmoji(item.relationship)}
-          </Text>
-        </View>
-        <View style={styles.memberDetails}>
-          <Text style={styles.memberName}>{item.fullName}</Text>
-          <Text style={styles.memberRelation}>{item.relationship}</Text>
-          <Text style={styles.memberDOB}>
-            DOB: {formatDateDisplay(item.dateOfBirth)}
-          </Text>
-          <Text style={styles.memberPhone}>📞 {item.phoneNumber}</Text>
+            {/* Chevron toggle */}
+            <View style={styles.chevron}>
+              <MaterialCommunityIcons
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={20}
+                color="#6B7280"
+              />
+            </View>
+          </TouchableOpacity>
+
+          {/* Accordion Body */}
+          {isExpanded && (
+            <View style={styles.cardBody}>
+              {/* Extra Details */}
+              <Text style={styles.descriptionText}>
+                • Gender: {member.gender}{"\n"}
+                • Email: {member.email || "No email set"}{"\n"}
+                • Address: {member.address || "No address set"}{"\n"}
+                • Birthday Reminder: {member.birthdayReminderEnabled ? "Enabled" : "Disabled"}
+              </Text>
+
+              {/* Action buttons */}
+              <View style={styles.cardActionsContainer}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.editActionBtn]}
+                  onPress={() => openEditModal(member)}
+                >
+                  <MaterialCommunityIcons name="pencil" size={14} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>Edit</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.deleteActionBtn]}
+                  onPress={() => handleDeleteMember(member)}
+                >
+                  <MaterialCommunityIcons name="trash-can" size={14} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
-      <View style={styles.memberActions}>
-        <View style={styles.reminderRow}>
-          <Text style={styles.reminderText}>Reminder</Text>
-          <Switch
-            value={item.birthdayReminderEnabled}
-            onValueChange={() => toggleReminder(item)}
-            trackColor={{ false: "#D1D5DB", true: "#FFB84D" }}
-            thumbColor={item.birthdayReminderEnabled ? "#fff" : "#f4f3f4"}
-          />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   if (!profile) {
     return (
@@ -231,257 +470,427 @@ export default function FamilyScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: "Family",
-          headerShown: true,
-          headerRight: () => (
-            <TouchableOpacity onPress={openAddModal} style={styles.addButton}>
-              <Text style={styles.addButtonText}>+ Add</Text>
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ title: "Family Screen", headerShown: true }} />
       <View style={styles.container}>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <Text>Loading...</Text>
-          </View>
-        ) : members.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>👨‍👩‍👧‍👦</Text>
-            <Text style={styles.emptyTitle}>No Family Members Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Tap &quot;+ Add&quot; to add your first family member
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={members}
-            renderItem={renderMember}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-          />
-        )}
-
-        {/* Add/Edit Modal */}
-        <Modal
-          visible={isModalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setIsModalVisible(false)}
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                <Text style={styles.modalCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>
-                {editingMember ? "Edit Member" : "Add Family Member"}
+          {/* 1. Header productivity card */}
+          <View style={styles.headerCard}>
+            <View style={styles.headerTopRow}>
+              <View style={styles.greetingSection}>
+                <Text style={styles.greetingTitle}>Your Family</Text>
+                <Text style={styles.greetingSubtitle}>
+                  Manage family profiles and setup birthday reminders
+                </Text>
+              </View>
+              <View style={styles.progressCircle}>
+                <Text style={styles.progressPercentText}>
+                  {Math.round(completionRate)}%
+                </Text>
+                <Text style={styles.progressSubtext}>Reminders</Text>
+              </View>
+            </View>
+
+            <View style={styles.statChipsRow}>
+              <View style={[styles.statChip, styles.statChipDone]}>
+                <Text style={[styles.statChipCount, styles.doneChipText]}>
+                  {totalCount}
+                </Text>
+                <Text style={[styles.statChipLabel, styles.doneChipText]}>
+                  Members
+                </Text>
+              </View>
+              <View style={[styles.statChip, styles.statChipPending]}>
+                <Text style={[styles.statChipCount, styles.pendingChipText]}>
+                  {remindersCount}
+                </Text>
+                <Text style={[styles.statChipLabel, styles.pendingChipText]}>
+                  Reminders
+                </Text>
+              </View>
+              <View style={[styles.statChip, styles.statChipOverdue]}>
+                <Text style={[styles.statChipCount, styles.overdueChipText]}>
+                  {upcomingBirthdaysCount}
+                </Text>
+                <Text style={[styles.statChipLabel, styles.overdueChipText]}>
+                  Bdays (30d)
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 2. Segmented tab pills filter */}
+          <View style={styles.filterContainer}>
+            <TouchableOpacity
+              style={[styles.filterPill, activeTab === "all" && styles.filterPillActive]}
+              onPress={() => setActiveTab("all")}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  activeTab === "all" && styles.filterPillTextActive,
+                ]}
+              >
+                All
               </Text>
-              <TouchableOpacity onPress={handleSave}>
-                <Text style={styles.modalSave}>Save</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeTab === "immediate" && styles.filterPillActive]}
+              onPress={() => setActiveTab("immediate")}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  activeTab === "immediate" && styles.filterPillTextActive,
+                ]}
+              >
+                Immediate
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeTab === "extended" && styles.filterPillActive]}
+              onPress={() => setActiveTab("extended")}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  activeTab === "extended" && styles.filterPillTextActive,
+                ]}
+              >
+                Extended
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 3. Inline Composer Card */}
+          <View style={styles.composerCard}>
+            <View style={styles.composerInputRow}>
+              <TextInput
+                style={styles.composerInput}
+                placeholder="Family member full name..."
+                placeholderTextColor="#9CA3AF"
+                value={composerName}
+                onChangeText={setComposerName}
+              />
+              <TouchableOpacity
+                style={styles.composerSubmitBtn}
+                onPress={handleAddMember}
+              >
+                <MaterialCommunityIcons name="arrow-up" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
-              {/* Full Name */}
-              <View style={styles.inputGroup}>
+            <View style={styles.composerChipsRow}>
+              {/* Relationship Type Chip */}
+              <TouchableOpacity
+                style={styles.composerChip}
+                onPress={() => openRelationSelectorModal("composer")}
+              >
+                <Text style={styles.composerChipText}>
+                  {RELATIONSHIP_EMOJIS[composerRelation] || "👤"} {composerRelation}
+                </Text>
+              </TouchableOpacity>
+
+              {/* DOB Calendar Picker Chip */}
+              <TouchableOpacity
+                style={styles.composerChip}
+                onPress={() => openCalendarModal("composer")}
+              >
+                <Text style={styles.composerChipText}>
+                  🎂 {composerDOB ? composerDOB.toLocaleDateString() : "Birthdate"}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Gender selector chip */}
+              <TouchableOpacity
+                style={styles.composerChip}
+                onPress={() => openGenderSelectorModal("composer")}
+              >
+                <Text style={styles.composerChipText}>
+                  👥 {composerGender}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick add details container (just Phone input for Composer) */}
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                style={styles.compactSubInput}
+                placeholder="Phone number... *"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="phone-pad"
+                value={composerPhone}
+                onChangeText={setComposerPhone}
+              />
+            </View>
+          </View>
+
+          {/* 4. Feed Sections */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2563EB" />
+            </View>
+          ) : filteredMembers.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>👨‍👩‍👧‍👦</Text>
+              <Text style={styles.emptyText}>No family members found</Text>
+              <Text style={styles.emptySubtext}>
+                Use the composer above to add family members and customize tracking.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.feedContainer}>
+              {groupedSections.map(g => renderGroupSection(g.title, g.data, g.bgColor, g.color))}
+            </View>
+          )}
+
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+
+        {/* Modal: Edit Family Member details */}
+        <Modal
+          visible={modalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => {
+            setModalVisible(false);
+            resetForm();
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Member Details</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setModalVisible(false);
+                    resetForm();
+                  }}
+                >
+                  <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                {/* Full Name */}
                 <Text style={styles.label}>Full Name *</Text>
                 <TextInput
                   style={styles.input}
+                  placeholder="Emma Brown"
                   value={formData.fullName}
                   onChangeText={(text) =>
                     setFormData({ ...formData, fullName: text })
                   }
-                  placeholder="Emma Brown"
                 />
-              </View>
 
-              {/* Relationship */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Relationship *</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.relationshipRow}>
-                    {(
-                      [
-                        "Wife",
-                        "Husband",
-                        "Son",
-                        "Daughter",
-                        "Father",
-                        "Mother",
-                        "Brother",
-                        "Sister",
-                        "Other",
-                      ] as RelationshipType[]
-                    ).map((rel) => (
-                      <TouchableOpacity
-                        key={rel}
-                        style={[
-                          styles.relationshipChip,
-                          formData.relationship === rel &&
-                            styles.relationshipChipActive,
-                        ]}
-                        onPress={() =>
-                          setFormData({ ...formData, relationship: rel })
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.relationshipChipText,
-                            formData.relationship === rel &&
-                              styles.relationshipChipTextActive,
-                          ]}
-                        >
-                          {rel}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-
-              {/* Date of Birth */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Date of Birth *</Text>
-                <TouchableOpacity
-                  style={styles.datePickerButton}
-                  onPress={() => setShowDOBCalendar(true)}
-                >
-                  <Text
-                    style={
-                      formData.dateOfBirth
-                        ? styles.datePickerText
-                        : styles.datePickerPlaceholder
-                    }
-                  >
-                    {formData.dateOfBirth || "Select date of birth"}
-                  </Text>
-                  <Text style={styles.datePickerIcon}>📅</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Gender */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Gender</Text>
-                <View style={styles.genderRow}>
-                  {(["Male", "Female", "Other"] as const).map((g) => (
-                    <TouchableOpacity
-                      key={g}
-                      style={[
-                        styles.genderOption,
-                        formData.gender === g && styles.genderOptionActive,
-                      ]}
-                      onPress={() => setFormData({ ...formData, gender: g })}
-                    >
-                      <Text
-                        style={[
-                          styles.genderText,
-                          formData.gender === g && styles.genderTextActive,
-                        ]}
-                      >
-                        {g}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Phone Number */}
-              <View style={styles.inputGroup}>
+                {/* Phone Number */}
                 <Text style={styles.label}>Phone Number *</Text>
                 <TextInput
                   style={styles.input}
+                  placeholder="Phone number"
+                  keyboardType="phone-pad"
                   value={formData.phoneNumber}
                   onChangeText={(text) =>
                     setFormData({ ...formData, phoneNumber: text })
                   }
-                  placeholder="555-1234"
-                  keyboardType="phone-pad"
                 />
-              </View>
 
-              {/* Email */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email (Optional)</Text>
+                {/* Relationship Selector */}
+                <Text style={styles.label}>Relationship</Text>
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => openRelationSelectorModal("modal")}
+                >
+                  <Text style={styles.inputText}>
+                    {RELATIONSHIP_EMOJIS[formData.relationship] || "👤"} {formData.relationship}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Gender Selector */}
+                <Text style={styles.label}>Gender</Text>
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => openGenderSelectorModal("modal")}
+                >
+                  <Text style={styles.inputText}>
+                    {formData.gender}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* DOB Calendar Picker */}
+                <Text style={styles.label}>Date of Birth</Text>
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => openCalendarModal("modal")}
+                >
+                  <Text style={styles.inputText}>
+                    🎂 {formData.dateOfBirth.toLocaleDateString()}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Email */}
+                <Text style={styles.label}>Email</Text>
                 <TextInput
                   style={styles.input}
+                  placeholder="email@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                   value={formData.email}
                   onChangeText={(text) =>
                     setFormData({ ...formData, email: text })
                   }
-                  placeholder="email@example.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
                 />
-              </View>
 
-              {/* Address */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Address (Optional)</Text>
+                {/* Address */}
+                <Text style={styles.label}>Address</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
+                  placeholder="Address details"
+                  multiline
+                  numberOfLines={2}
                   value={formData.address}
                   onChangeText={(text) =>
                     setFormData({ ...formData, address: text })
                   }
-                  placeholder="Address"
-                  multiline
-                  numberOfLines={2}
                 />
-              </View>
 
-              {/* Birthday Reminder */}
-              <View style={styles.inputGroup}>
+                {/* Birthday Reminder Switch */}
                 <View style={styles.switchRow}>
-                  <View>
-                    <Text style={styles.label}>Birthday Reminder</Text>
-                    <Text style={styles.switchDescription}>
-                      Get notified on their birthday
-                    </Text>
-                  </View>
+                  <Text style={styles.label}>Enable Birthday Reminder</Text>
                   <Switch
                     value={formData.birthdayReminderEnabled}
                     onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        birthdayReminderEnabled: value,
-                      })
+                      setFormData({ ...formData, birthdayReminderEnabled: value })
                     }
-                    trackColor={{ false: "#D1D5DB", true: "#FFB84D" }}
+                    trackColor={{ false: "#E5E7EB", true: "#2563EB" }}
                   />
                 </View>
-              </View>
 
-              {editingMember && (
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => {
-                    setIsModalVisible(false);
-                    handleDelete(editingMember);
-                  }}
-                >
-                  <Text style={styles.deleteButtonText}>
-                    Delete Family Member
-                  </Text>
+                <TouchableOpacity style={styles.saveButton} onPress={saveMember}>
+                  <Text style={styles.saveButtonText}>Update Member Details</Text>
                 </TouchableOpacity>
-              )}
-            </ScrollView>
+              </ScrollView>
+            </View>
           </View>
         </Modal>
 
-        {/* DOB Calendar */}
+        {/* Modal: Relationship Type Selector */}
+        {showRelationSelector && (
+          <Modal
+            visible={showRelationSelector}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setShowRelationSelector(false)}
+          >
+            <View style={styles.selectorOverlay}>
+              <View style={styles.selectorContent}>
+                <View style={styles.selectorHeader}>
+                  <Text style={styles.selectorTitle}>Select Relationship Type</Text>
+                  <TouchableOpacity onPress={() => setShowRelationSelector(false)}>
+                    <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.selectorBody}>
+                  {RELATIONSHIPS.map((rel) => {
+                    const currentRel = selectorTarget === "modal" ? formData.relationship : composerRelation;
+                    const isActive = currentRel === rel;
+
+                    return (
+                      <TouchableOpacity
+                        key={rel}
+                        style={[
+                          styles.selectorOption,
+                          isActive && styles.activeSelectorOption,
+                        ]}
+                        onPress={() => {
+                          if (selectorTarget === "modal") {
+                            setFormData((prev) => ({ ...prev, relationship: rel }));
+                          } else {
+                            setComposerRelation(rel);
+                          }
+                          setShowRelationSelector(false);
+                        }}
+                      >
+                        <Text style={styles.selectorIcon}>
+                          {RELATIONSHIP_EMOJIS[rel] || "👤"}
+                        </Text>
+                        <Text style={styles.selectorText}>{rel}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Modal: Gender Selector */}
+        {showGenderSelector && (
+          <Modal
+            visible={showGenderSelector}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setShowGenderSelector(false)}
+          >
+            <View style={styles.selectorOverlay}>
+              <View style={styles.selectorContent}>
+                <View style={styles.selectorHeader}>
+                  <Text style={styles.selectorTitle}>Select Gender</Text>
+                  <TouchableOpacity onPress={() => setShowGenderSelector(false)}>
+                    <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.selectorBody}>
+                  {(["Male", "Female", "Other"] as const).map((gender) => {
+                    const currentGender = selectorTarget === "modal" ? formData.gender : composerGender;
+                    const isActive = currentGender === gender;
+
+                    return (
+                      <TouchableOpacity
+                        key={gender}
+                        style={[
+                          styles.selectorOption,
+                          isActive && styles.activeSelectorOption,
+                        ]}
+                        onPress={() => {
+                          if (selectorTarget === "modal") {
+                            setFormData((prev) => ({ ...prev, gender }));
+                          } else {
+                            setComposerGender(gender);
+                          }
+                          setShowGenderSelector(false);
+                        }}
+                      >
+                        <Text style={styles.selectorIcon}>👥</Text>
+                        <Text style={styles.selectorText}>{gender}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Modal: Calendar DOB Select */}
         <Calendar
-          visible={showDOBCalendar}
-          onClose={() => setShowDOBCalendar(false)}
+          visible={showCalendar}
+          onClose={() => setShowCalendar(false)}
           onSelectDate={(date) => {
-            setSelectedDOB(date);
-            setFormData({ ...formData, dateOfBirth: formatDateToInput(date) });
+            if (selectorTarget === "modal") {
+              setFormData((prev) => ({ ...prev, dateOfBirth: date }));
+            } else {
+              setComposerDOB(date);
+            }
+            setShowCalendar(false);
           }}
           selectedDate={
-            selectedDOB ||
-            (formData.dateOfBirth ? new Date(formData.dateOfBirth) : new Date())
+            (selectorTarget === "modal" ? formData.dateOfBirth : composerDOB) || new Date()
           }
           maxDate={new Date()}
         />
@@ -493,273 +902,478 @@ export default function FamilyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#F3F4F6", // soft light gray background
+  },
+  scrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  bottomSpacer: {
+    height: 60,
   },
   loadingContainer: {
-    flex: 1,
+    paddingVertical: 40,
     justifyContent: "center",
     alignItems: "center",
   },
   emptyContainer: {
-    flex: 1,
+    paddingVertical: 60,
     justifyContent: "center",
     alignItems: "center",
-    padding: 40,
   },
   emptyIcon: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
+    fontSize: 48,
+    marginBottom: 12,
   },
   emptyText: {
-    fontSize: 16,
-    color: "#6B7280",
-  },
-  addButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: "#FFB84D",
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  addButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  listContent: {
-    padding: 16,
-  },
-  memberCard: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  memberInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#FFB84D20",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  avatarEmoji: {
-    fontSize: 32,
-  },
-  memberDetails: {
-    flex: 1,
-  },
-  memberName: {
     fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
+    fontWeight: "700",
+    color: "#374151",
     marginBottom: 4,
   },
-  memberRelation: {
+  emptySubtext: {
     fontSize: 14,
-    color: "#FFB84D",
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  memberDOB: {
-    fontSize: 13,
     color: "#6B7280",
-    marginBottom: 2,
+    textAlign: "center",
+    paddingHorizontal: 24,
   },
-  memberPhone: {
-    fontSize: 13,
-    color: "#6B7280",
+  feedContainer: {
+    marginTop: 8,
   },
-  memberActions: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingTop: 12,
+  
+  // 1. Header productivity card styling
+  headerCard: {
+    backgroundColor: "#2563EB", // premium productivity blue
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  reminderRow: {
+  headerTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  reminderText: {
-    fontSize: 14,
-    color: "#1F2937",
+  greetingSection: {
+    flex: 1,
+    marginRight: 12,
+  },
+  greetingTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  greetingSubtitle: {
+    color: "#BFDBFE",
+    fontSize: 13,
+    marginTop: 4,
     fontWeight: "500",
   },
-  modalContainer: {
+  progressCircle: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 4,
+    borderColor: "#FFFFFF",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  progressPercentText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  progressSubtext: {
+    color: "#93C5FD",
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  statChipsRow: {
+    flexDirection: "row",
+    marginTop: 18,
+    gap: 8,
+  },
+  statChip: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statChipOverdue: {
+    backgroundColor: "#FEE2E2",
+  },
+  statChipPending: {
+    backgroundColor: "#FEF3C7",
+  },
+  statChipDone: {
+    backgroundColor: "#D1FAE5",
+  },
+  statChipCount: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  statChipLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  overdueChipText: {
+    color: "#DC2626",
+  },
+  pendingChipText: {
+    color: "#D97706",
+  },
+  doneChipText: {
+    color: "#10B981",
+  },
+
+  // 2. Segmented Pill Filter
+  filterContainer: {
+    flexDirection: "row",
+    backgroundColor: "#E5E7EB",
+    borderRadius: 24,
+    padding: 3,
+    marginBottom: 16,
+  },
+  filterPill: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: "center",
+    borderRadius: 20,
+  },
+  filterPillActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  filterPillTextActive: {
+    color: "#1F2937",
+    fontWeight: "700",
+  },
+
+  // 3. Inline Composer Card
+  composerCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  composerInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    paddingBottom: 10,
+  },
+  composerInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1F2937",
+    paddingVertical: 6,
+    fontWeight: "500",
+  },
+  composerSubmitBtn: {
+    backgroundColor: "#2563EB",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  composerChipsRow: {
+    flexDirection: "row",
+    marginTop: 10,
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  composerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  composerChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  compactSubInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: "#1F2937",
+    backgroundColor: "#F9FAFB",
+  },
+
+  // 4. Task Cards & Sections
+  sectionContainer: {
+    marginBottom: 20,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4B5563",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  sectionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  sectionBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  priorityBar: {
+    width: 5,
+    height: "100%",
+  },
+  cardMain: {
+    flex: 1,
+    padding: 12,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  checkbox: {
+    marginRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  taskInfo: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  taskMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 6,
+    flexWrap: "wrap",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  metaLabelText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+  },
+  categoryIconText: {
+    fontSize: 11,
+  },
+  chevron: {
+    padding: 4,
+  },
+
+  // 5. Collapsible Body details
+  cardBody: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  descriptionText: {
+    fontSize: 13,
+    color: "#4B5563",
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  cardActionsContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 4,
+  },
+  editActionBtn: {
+    backgroundColor: "#3B82F6",
+  },
+  deleteActionBtn: {
+    backgroundColor: "#EF4444",
+  },
+  actionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // 6. Modals & Overlay forms
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: "white",
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
   },
-  modalCancel: {
-    fontSize: 16,
-    color: "#6B7280",
-  },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#1F2937",
   },
-  modalSave: {
-    fontSize: 16,
-    color: "#FFB84D",
-    fontWeight: "600",
-  },
-  modalContent: {
-    flex: 1,
+  modalBody: {
     padding: 16,
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  datePickerButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-  },
-  datePickerText: {
-    fontSize: 16,
-    color: "#1F2937",
-    fontWeight: "500",
-  },
-  datePickerPlaceholder: {
-    fontSize: 16,
-    color: "#9CA3AF",
-  },
-  datePickerIcon: {
-    fontSize: 20,
+    color: "#374151",
+    marginBottom: 6,
+    marginTop: 10,
   },
   input: {
-    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    backgroundColor: "#FFFFFF",
+    color: "#1F2937",
+  },
+  inputText: {
+    fontSize: 14,
     color: "#1F2937",
   },
   textArea: {
-    height: 80,
+    minHeight: 60,
     textAlignVertical: "top",
-  },
-  relationshipRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  relationshipChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  relationshipChipActive: {
-    backgroundColor: "#FFB84D",
-    borderColor: "#FFB84D",
-  },
-  relationshipChipText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  relationshipChipTextActive: {
-    color: "white",
-    fontWeight: "600",
-  },
-  genderRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  genderOption: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-  },
-  genderOptionActive: {
-    backgroundColor: "#FFB84D20",
-    borderColor: "#FFB84D",
-  },
-  genderText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  genderTextActive: {
-    color: "#FFB84D",
-    fontWeight: "600",
   },
   switchRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "white",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  switchDescription: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginTop: 2,
-  },
-  deleteButton: {
-    backgroundColor: "#FEE2E2",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
     marginTop: 12,
-    marginBottom: 40,
   },
-  deleteButtonText: {
-    color: "#DC2626",
+  saveButton: {
+    backgroundColor: "#2563EB",
+    padding: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  selectorOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  selectorContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "60%",
+  },
+  selectorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  selectorTitle: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  selectorBody: {
+    padding: 8,
+  },
+  selectorOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  activeSelectorOption: {
+    backgroundColor: "#EFF6FF",
+  },
+  selectorIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  selectorText: {
+    fontSize: 15,
+    color: "#1F2937",
+    fontWeight: "500",
   },
 });
