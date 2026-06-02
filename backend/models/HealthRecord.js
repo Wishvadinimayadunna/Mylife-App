@@ -2,6 +2,7 @@
 // Health Record Model
 // Appointments, Medication, Vitals, Emergency Contacts,
 // Mood, Symptoms, Period (isPrivate enforced)
+// WaterLog, SleepLog (dedicated quick-action collections)
 // ============================================
 
 const mongoose = require("mongoose");
@@ -26,6 +27,8 @@ const medicineReminderSchema = new mongoose.Schema({
   dosage: { type: String },
   reminderTime: { type: String, required: true },
   isEnabled: { type: Boolean, default: true },
+  // Array of "YYYY-MM-DD" strings for daily compliance tracking
+  takenDates: [{ type: String }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
@@ -102,6 +105,31 @@ const periodRecordSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+// ============================================
+// WATER LOG — dedicated quick-action collection
+// ============================================
+const waterLogSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  amountML: { type: Number, required: true, default: 250 },
+  recordedAt: { type: Date, required: true, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// ============================================
+// SLEEP LOG — dedicated quick-action collection
+// ============================================
+const sleepLogSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  durationHours: { type: Number, required: true },
+  quality: {
+    type: String,
+    enum: ["Poor", "Fair", "Good", "Excellent"],
+    default: "Good",
+  },
+  recordedAt: { type: Date, required: true, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+});
+
 // Pre-save timestamp hooks
 medicalAppointmentSchema.pre("save", function (next) { this.updatedAt = new Date(); next(); });
 medicineReminderSchema.pre("save", function (next) { this.updatedAt = new Date(); next(); });
@@ -119,6 +147,8 @@ emergencyContactSchema.index({ userId: 1 });
 moodRecordSchema.index({ userId: 1, recordDate: -1 });
 symptomRecordSchema.index({ userId: 1, recordDate: -1 });
 periodRecordSchema.index({ userId: 1, startDate: -1 });
+waterLogSchema.index({ userId: 1, recordedAt: -1 });
+sleepLogSchema.index({ userId: 1, recordedAt: -1 });
 
 module.exports = {
   MedicalAppointment: mongoose.model("MedicalAppointment", medicalAppointmentSchema),
@@ -128,4 +158,6 @@ module.exports = {
   MoodRecord: mongoose.model("MoodRecord", moodRecordSchema),
   SymptomRecord: mongoose.model("SymptomRecord", symptomRecordSchema),
   PeriodRecord: mongoose.model("PeriodRecord", periodRecordSchema),
+  WaterLog: mongoose.model("WaterLog", waterLogSchema),
+  SleepLog: mongoose.model("SleepLog", sleepLogSchema),
 };

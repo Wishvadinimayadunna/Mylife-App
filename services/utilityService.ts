@@ -6,12 +6,19 @@
 import { UtilityBill } from "@/types";
 import apiClient from "@/utils/api";
 
+// Helper to map MongoDB _id to id
+const mapBill = (bill: any): UtilityBill => ({
+  ...bill,
+  id: String(bill._id || bill.id),
+  _id: undefined,
+});
+
 const utilityService = {
   // Get all utility bills
   async getAllBills(): Promise<UtilityBill[]> {
     try {
       const response = await apiClient.get("/utility");
-      return response.data;
+      return (response.data || []).map(mapBill);
     } catch (error) {
       console.error("Get all bills error:", error);
       throw error;
@@ -22,7 +29,7 @@ const utilityService = {
   async getUnpaidBills(): Promise<UtilityBill[]> {
     try {
       const response = await apiClient.get("/utility/unpaid");
-      return response.data;
+      return (response.data || []).map(mapBill);
     } catch (error) {
       console.error("Get unpaid bills error:", error);
       throw error;
@@ -33,7 +40,7 @@ const utilityService = {
   async getPaidBills(): Promise<UtilityBill[]> {
     try {
       const response = await apiClient.get("/utility/paid");
-      return response.data;
+      return (response.data || []).map(mapBill);
     } catch (error) {
       console.error("Get paid bills error:", error);
       throw error;
@@ -46,7 +53,7 @@ const utilityService = {
   ): Promise<UtilityBill> {
     try {
       const response = await apiClient.post("/utility", data);
-      return response.data;
+      return mapBill(response.data);
     } catch (error) {
       console.error("Add bill error:", error);
       throw error;
@@ -60,7 +67,7 @@ const utilityService = {
   ): Promise<UtilityBill> {
     try {
       const response = await apiClient.put(`/utility/${id}`, data);
-      return response.data;
+      return mapBill(response.data);
     } catch (error) {
       console.error("Update bill error:", error);
       throw error;
@@ -71,7 +78,7 @@ const utilityService = {
   async markBillAsPaid(id: string): Promise<UtilityBill> {
     try {
       const response = await apiClient.patch(`/utility/${id}/pay`);
-      return response.data;
+      return mapBill(response.data);
     } catch (error) {
       console.error("Mark bill as paid error:", error);
       throw error;
@@ -82,7 +89,7 @@ const utilityService = {
   async markBillAsUnpaid(id: string): Promise<UtilityBill> {
     try {
       const response = await apiClient.patch(`/utility/${id}/unpay`);
-      return response.data;
+      return mapBill(response.data);
     } catch (error) {
       console.error("Mark bill as unpaid error:", error);
       throw error;

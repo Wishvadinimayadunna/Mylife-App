@@ -2,6 +2,7 @@
 // Health Routes
 // Appointments, Medication, Vitals, Emergency Contacts,
 // Mood, Symptoms, Period — all strictly private by userId
+// WaterLog, SleepLog — quick-action wellness logs
 // ============================================
 
 const express = require("express");
@@ -14,6 +15,8 @@ const {
   MoodRecord,
   SymptomRecord,
   PeriodRecord,
+  WaterLog,
+  SleepLog,
 } = require("../models/HealthRecord");
 
 const router = express.Router();
@@ -106,6 +109,36 @@ router.put("/medicines/:id", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Update medicine error:", error);
     res.status(500).json({ error: "Failed to update medicine reminder" });
+  }
+});
+
+// PATCH /medicines/:id/taken — toggle daily compliance for a date
+router.patch("/medicines/:id/taken", authMiddleware, async (req, res) => {
+  try {
+    const { date, taken } = req.body; // date: "YYYY-MM-DD", taken: boolean
+    if (!date) return res.status(400).json({ error: "date is required (YYYY-MM-DD)" });
+
+    const medicine = await MedicineReminder.findOne({ _id: req.params.id, userId: req.userId });
+    if (!medicine) return res.status(404).json({ error: "Medicine reminder not found" });
+
+    if (!medicine.takenDates) medicine.takenDates = [];
+
+    if (taken) {
+      // Add date if not already present
+      if (!medicine.takenDates.includes(date)) {
+        medicine.takenDates.push(date);
+      }
+    } else {
+      // Remove the date
+      medicine.takenDates = medicine.takenDates.filter((d) => d !== date);
+    }
+
+    medicine.updatedAt = new Date();
+    await medicine.save();
+    res.json(medicine);
+  } catch (error) {
+    console.error("Toggle medicine taken error:", error);
+    res.status(500).json({ error: "Failed to update medicine taken status" });
   }
 });
 
@@ -330,7 +363,6 @@ router.delete("/symptoms/:id", authMiddleware, async (req, res) => {
 
 router.get("/periods", authMiddleware, async (req, res) => {
   try {
-    // Extra safety: only ever return records belonging to this user
     const periods = await PeriodRecord.find({ userId: req.userId, isPrivate: true }).sort({ startDate: -1 });
     res.json(periods);
   } catch (error) {
@@ -341,7 +373,6 @@ router.get("/periods", authMiddleware, async (req, res) => {
 
 router.post("/periods", authMiddleware, async (req, res) => {
   try {
-    // Force isPrivate true regardless of payload
     const period = new PeriodRecord({ userId: req.userId, ...req.body, isPrivate: true });
     await period.save();
     res.status(201).json(period);
@@ -353,7 +384,6 @@ router.post("/periods", authMiddleware, async (req, res) => {
 
 router.put("/periods/:id", authMiddleware, async (req, res) => {
   try {
-    // Strip isPrivate from updates to keep it immutable
     const { isPrivate, ...updateData } = req.body;
     const period = await PeriodRecord.findOneAndUpdate(
       { _id: req.params.id, userId: req.userId },
@@ -376,6 +406,90 @@ router.delete("/periods/:id", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Delete period error:", error);
     res.status(500).json({ error: "Failed to delete period record" });
+  }
+});
+
+// ============================================
+// WATER LOG — quick-action hydration tracking
+// ============================================
+
+router.get("/water", authMiddleware, async (req, res) => {
+  try {
+    const logs = await WaterLog.find({ userId: req.userId }).sort({ recordedAt: -1 });
+    res.json(logs);
+  } catch (error) {
+    console.error("Get water logs error:", error);
+    res.status(500).json({ error: "Failed to get water logs" });
+  }
+});
+
+router.post("/water", authMiddleware, async (req, res) => {
+  try {
+    const { amountML, recordedAt } = req.body;
+    const log = new WaterLog({
+      userId: req.userId,
+      amountML: amountML || 250,
+      recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
+    });
+    await log.save();
+    res.status(201).json(log);
+  } catch (error) {
+    console.error("Add water log error:", error);
+    res.status(500).json({ error: "Failed to add water log" });
+  }
+});
+
+router.delete("/water/:id", authMiddleware, async (req, res) => {
+  try {
+    const log = await WaterLog.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!log) return res.status(404).json({ error: "Water log not found" });
+    res.json({ message: "Water log deleted successfully" });
+  } catch (error) {
+    console.error("Delete water log error:", error);
+    res.status(500).json({ error: "Failed to delete water log" });
+  }
+});
+
+// ============================================
+// SLEEP LOG — quick-action sleep tracking
+// ============================================
+
+router.get("/sleep", authMiddleware, async (req, res) => {
+  try {
+    const logs = await SleepLog.find({ userId: req.userId }).sort({ recordedAt: -1 });
+    res.json(logs);
+  } catch (error) {
+    console.error("Get sleep logs error:", error);
+    res.status(500).json({ error: "Failed to get sleep logs" });
+  }
+});
+
+router.post("/sleep", authMiddleware, async (req, res) => {
+  try {
+    const { durationHours, quality, recordedAt } = req.body;
+    if (!durationHours) return res.status(400).json({ error: "durationHours is required" });
+    const log = new SleepLog({
+      userId: req.userId,
+      durationHours,
+      quality: quality || "Good",
+      recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
+    });
+    await log.save();
+    res.status(201).json(log);
+  } catch (error) {
+    console.error("Add sleep log error:", error);
+    res.status(500).json({ error: "Failed to add sleep log" });
+  }
+});
+
+router.delete("/sleep/:id", authMiddleware, async (req, res) => {
+  try {
+    const log = await SleepLog.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!log) return res.status(404).json({ error: "Sleep log not found" });
+    res.json({ message: "Sleep log deleted successfully" });
+  } catch (error) {
+    console.error("Delete sleep log error:", error);
+    res.status(500).json({ error: "Failed to delete sleep log" });
   }
 });
 

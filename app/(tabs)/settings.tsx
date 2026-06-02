@@ -135,6 +135,9 @@ export default function SettingsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnTxt}>←</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
       </View>
 
@@ -282,6 +285,17 @@ const styles = StyleSheet.create({
     paddingTop: STATUS_H + 16,
     paddingBottom: 20,
     paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backBtn: {
+    marginRight: 14,
+    padding: 4,
+  },
+  backBtnTxt: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "500",
   },
   headerTitle: {
     color: "#FFFFFF",

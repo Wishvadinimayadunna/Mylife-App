@@ -85,7 +85,7 @@ export default function RootLayout() {
         />
         <Stack.Screen name="profile/index" options={{ title: "Profile", headerShown: false }} />
         <Stack.Screen name="family/index" options={{ title: "Family" }} />
-        <Stack.Screen name="finance/index" options={{ title: "Finance" }} />
+        <Stack.Screen name="finance/index" options={{ title: "Finance", headerShown: false }} />
         <Stack.Screen name="shopping/index" options={{ title: "Shopping", headerShown: false }} />
         <Stack.Screen name="future-event/index" options={{ title: "Future Events" }} />
         <Stack.Screen name="todo/index" options={{ title: "Todo" }} />

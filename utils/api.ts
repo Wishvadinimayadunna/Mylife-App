@@ -5,10 +5,20 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import Constants from "expo-constants";
 
-// Base API URL - change this for production
-// Use your computer's IP address so mobile devices can connect
-const API_BASE_URL = "http://10.161.238.15:5000/api";
+// Base API URL - dynamically resolve computer's local IP address so mobile devices can connect
+const getApiBaseUrl = () => {
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const ip = hostUri.split(":")[0];
+    return `http://${ip}:5000/api`;
+  }
+  // Fallback to the current local Wi-Fi IP address
+  return "http://10.237.231.15:5000/api";
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 const api = axios.create({
