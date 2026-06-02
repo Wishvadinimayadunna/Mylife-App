@@ -6,12 +6,25 @@
 import { ToDoTask } from "@/types";
 import apiClient from "@/utils/api";
 
+const mapTask = (task: any): ToDoTask => {
+  if (!task) return task;
+  return {
+    ...task,
+    id: String(task._id || task.id),
+  };
+};
+
+const mapTasks = (tasks: any[]): ToDoTask[] => {
+  if (!Array.isArray(tasks)) return [];
+  return tasks.map(mapTask);
+};
+
 const todoService = {
   // Get all tasks
   async getAllTasks(): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get("/todo");
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get all tasks error:", error);
       throw error;
@@ -22,7 +35,7 @@ const todoService = {
   async getPendingTasks(): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get("/todo/pending");
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get pending tasks error:", error);
       throw error;
@@ -33,7 +46,7 @@ const todoService = {
   async getCompletedTasks(): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get("/todo/completed");
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get completed tasks error:", error);
       throw error;
@@ -44,7 +57,7 @@ const todoService = {
   async getTasksByPriority(priority: string): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get(`/todo/priority/${priority}`);
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get tasks by priority error:", error);
       throw error;
@@ -55,7 +68,7 @@ const todoService = {
   async getTasksByCategory(category: string): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get(`/todo/category/${category}`);
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get tasks by category error:", error);
       throw error;
@@ -66,7 +79,7 @@ const todoService = {
   async getOverdueTasks(): Promise<ToDoTask[]> {
     try {
       const response = await apiClient.get("/todo/overdue");
-      return response.data;
+      return mapTasks(response.data);
     } catch (error) {
       console.error("Get overdue tasks error:", error);
       throw error;
@@ -79,7 +92,7 @@ const todoService = {
   ): Promise<ToDoTask> {
     try {
       const response = await apiClient.post("/todo", data);
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Create task error:", error);
       throw error;
@@ -90,7 +103,7 @@ const todoService = {
   async updateTask(id: string, data: Partial<ToDoTask>): Promise<ToDoTask> {
     try {
       const response = await apiClient.put(`/todo/${id}`, data);
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Update task error:", error);
       throw error;
@@ -101,7 +114,7 @@ const todoService = {
   async toggleTaskCompletion(id: string): Promise<ToDoTask> {
     try {
       const response = await apiClient.patch(`/todo/${id}/toggle`);
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Toggle task error:", error);
       throw error;
@@ -124,7 +137,7 @@ const todoService = {
       const response = await apiClient.post(`/todo/${taskId}/subtasks`, {
         title,
       });
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Add subtask error:", error);
       throw error;
@@ -140,7 +153,7 @@ const todoService = {
       const response = await apiClient.patch(
         `/todo/${taskId}/subtasks/${subtaskId}/toggle`,
       );
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Toggle subtask error:", error);
       throw error;
@@ -153,7 +166,7 @@ const todoService = {
       const response = await apiClient.delete(
         `/todo/${taskId}/subtasks/${subtaskId}`,
       );
-      return response.data;
+      return mapTask(response.data);
     } catch (error) {
       console.error("Delete subtask error:", error);
       throw error;

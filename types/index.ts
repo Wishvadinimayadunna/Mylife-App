@@ -90,9 +90,11 @@ export interface MedicalAppointment {
   doctorName: string;
   appointmentDate: Date;
   appointmentTime: string;
+  reason?: string;
   notes?: string;
   reminderEnabled: boolean;
   reminderTime?: Date;
+  prescription?: { medicineName: string; dosage?: string }[];
   createdAt: Date;
   updatedAt: Date;
 }

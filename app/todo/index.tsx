@@ -645,7 +645,7 @@ export default function ToDoScreen() {
             <View style={styles.headerTopRow}>
               <View style={styles.greetingSection}>
                 <Text style={styles.greetingTitle}>Your Productivity</Text>
-                <Text style={styles.greetingSubtitle}>Let's check off your tasks!</Text>
+                <Text style={styles.greetingSubtitle}>{"Let's"} check off your tasks!</Text>
               </View>
               
               {/* Dynamic Progress Ring */}
