@@ -39,6 +39,23 @@ router.post("/appointments", authMiddleware, async (req, res) => {
   try {
     const appointment = new MedicalAppointment({ userId: req.userId, ...req.body });
     await appointment.save();
+
+    // Auto-create a MedicineReminder for each prescription medicine
+    const prescription = req.body.prescription || [];
+    if (prescription.length > 0) {
+      const medDocs = prescription.map(({ medicineName, dosage }) =>
+        new MedicineReminder({
+          userId: req.userId,
+          medicineName,
+          dosage: dosage || "",
+          reminderTime: "08:00",
+          isEnabled: true,
+          takenDates: [],
+        })
+      );
+      await Promise.all(medDocs.map((m) => m.save()));
+    }
+
     res.status(201).json(appointment);
   } catch (error) {
     console.error("Add appointment error:", error);
