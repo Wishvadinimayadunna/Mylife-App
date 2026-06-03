@@ -726,6 +726,30 @@ export default function FutureEventScreen() {
         );
         return;
       }
+      if (Platform.OS === "android") {
+        try {
+          const { PermissionsAndroid } = require("react-native");
+          const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+          if (!hasPermission) {
+            const granted = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+              {
+                title: "Microphone Permission Required",
+                message: "This app needs access to your microphone to record voice commands for event creation.",
+                buttonNeutral: "Ask Me Later",
+                buttonNegative: "Cancel",
+                buttonPositive: "OK"
+              }
+            );
+            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+              Alert.alert("Permission Denied", "Microphone access is required to use the voice assistant.");
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn("Permission request failed:", err);
+        }
+      }
       try {
         const Voice = require("@react-native-voice/voice").default;
         await Voice.start("en-US");
