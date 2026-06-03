@@ -216,7 +216,7 @@ export default function SettingsScreen() {
             ) : (
               /* Not linked yet */
               <View style={{ marginTop: 14, gap: 10 }}>
-                <Text style={styles.inputLabel}>Partner's email address</Text>
+                <Text style={styles.inputLabel}>{"Partner's email address"}</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="partner@example.com"

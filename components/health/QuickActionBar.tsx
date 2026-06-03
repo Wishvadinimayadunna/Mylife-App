@@ -164,7 +164,7 @@ export default function QuickActionBar({
           <View style={s.sheet}>
             <View style={s.sheetHandle} />
             <Text style={s.sheetTitle}>Medicine Checklist</Text>
-            <Text style={s.sheetSub}>Mark what you've taken today</Text>
+            <Text style={s.sheetSub}>{"Mark what you've taken today"}</Text>
             <ScrollView style={{ maxHeight: 300 }}>
               {medicines.length === 0 ? (
                 <Text style={{ textAlign: "center", color: "#9CA3AF", marginTop: 20, fontSize: 13 }}>

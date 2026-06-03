@@ -4,6 +4,7 @@
 // ============================================
 
 import familyService from "@/services/familyService";
+import financeService from "@/services/financeService";
 import futureEventService from "@/services/futureEventService";
 import profileService from "@/services/profileService";
 import shoppingService from "@/services/shoppingService";
@@ -87,7 +88,7 @@ const SECTIONS = [
     color: "#F97316",
     bg: "#FFEDD5",
     route: "/finance",
-    staticLabel: "0 bills",
+    staticLabel: "Rs. 0",
   },
   {
     id: "future-event",
@@ -142,6 +143,7 @@ export default function HomeScreen() {
     shopping: 0,
     familyCount: 0,
     unpaidBills: 0,
+    netBalance: 0,
   });
   const [upcomingEvents, setUpcomingEvents] = useState<FutureEvent[]>([]);
 
@@ -176,13 +178,14 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      const [pendingTasks, unpaidBills, allEvents, shoppingItems, family] =
+      const [pendingTasks, unpaidBills, allEvents, shoppingItems, family, transactions] =
         await Promise.all([
           todoService.getPendingTasks(),
           utilityService.getUnpaidBills(),
           futureEventService.getFutureEvents(),
           shoppingService.getShoppingItems(""),
           familyService.getFamilyMembers(""),
+          financeService.getTransactions(profile?.id || ""),
         ]);
 
       const today = new Date();
@@ -202,12 +205,17 @@ export default function HomeScreen() {
 
       setUpcomingEvents(upcoming.slice(0, 2));
 
+      const netBalance = transactions.reduce((acc, t) => {
+        return t.type === "income" ? acc + t.amount : acc - t.amount;
+      }, 0);
+
       setStats({
         tasks: pendingTasks.length,
         events: upcoming.length,
         shopping: shoppingItems.filter((i) => !i.isBought).length,
         familyCount: family.length,
         unpaidBills: unpaidBills.length,
+        netBalance,
       });
     } catch (err) {
       console.error("loadData error:", err);
@@ -235,6 +243,9 @@ export default function HomeScreen() {
         return stats.events === 0
           ? "Plan ahead"
           : `${stats.events} upcoming`;
+      case "finance":
+        const formattedBal = Math.abs(stats.netBalance).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        return stats.netBalance >= 0 ? `Rs. ${formattedBal}` : `-Rs. ${formattedBal}`;
       default:
         return staticLabel;
     }
@@ -267,7 +278,7 @@ export default function HomeScreen() {
           <Text style={styles.heroGreeting}>
             {getGreeting()}, {firstName} 👋
           </Text>
-          <Text style={styles.heroSub}>Here's what's on your plate today.</Text>
+          <Text style={styles.heroSub}>{"Here's what's on your plate today."}</Text>
 
           {/* Stat chips */}
           <View style={styles.chipRow}>

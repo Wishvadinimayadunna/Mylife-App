@@ -168,6 +168,10 @@ export default function FamilyScreen() {
       Alert.alert("Error", "Please fill in Name, Phone Number, and Date of Birth");
       return;
     }
+    if (composerDOB > new Date()) {
+      Alert.alert("Error", "Date of birth cannot be in the future");
+      return;
+    }
 
     try {
       const memberData = {
@@ -213,6 +217,10 @@ export default function FamilyScreen() {
 
     if (!formData.fullName || !formData.phoneNumber || !formData.dateOfBirth) {
       Alert.alert("Error", "Please enter name, phone number and date of birth fields");
+      return;
+    }
+    if (formData.dateOfBirth > new Date()) {
+      Alert.alert("Error", "Date of birth cannot be in the future");
       return;
     }
 
@@ -850,7 +858,6 @@ export default function FamilyScreen() {
           selectedDate={
             (selectorTarget === "modal" ? formData.dateOfBirth : composerDOB) || new Date()
           }
-          maxDate={new Date()}
         />
       </View>
     </>
