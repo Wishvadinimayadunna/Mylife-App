@@ -123,7 +123,7 @@ export function buildTodayFeed(
 export default function DailySummaryCard({ entries }: Props) {
   return (
     <AppCard>
-      <Text style={s.title}>Today's Activity</Text>
+      <Text style={s.title}>{"Today's Activity"}</Text>
       {entries.length === 0 ? (
         <View style={s.empty}>
           <Text style={s.emptyEmoji}>📋</Text>

@@ -61,6 +61,10 @@ export default function ProfileScreen() {
         Alert.alert('Error', 'Please fill in all required fields (Name, Email, Phone, and Address)');
         return;
       }
+      if (formData.dateOfBirth && formData.dateOfBirth > new Date()) {
+        Alert.alert('Error', 'Date of birth cannot be in the future');
+        return;
+      }
 
       let savedProfile: Profile;
       if (profile) {
@@ -179,7 +183,6 @@ export default function ProfileScreen() {
             onClose={() => setShowDatePicker(false)}
             onSelectDate={handleDateChange}
             selectedDate={formData.dateOfBirth}
-            maxDate={new Date()}
           />
 
           {/* Email */}

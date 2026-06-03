@@ -45,6 +45,10 @@ const familyMemberSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  notificationIds: {
+    type: [String],
+    default: []
+  },
   createdAt: {
     type: Date,
     default: Date.now

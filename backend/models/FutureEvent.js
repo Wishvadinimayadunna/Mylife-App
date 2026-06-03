@@ -59,6 +59,10 @@ const futureEventSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  notificationIds: {
+    type: [String],
+    default: [],
+  },
   completedAt: {
     type: Date,
   },

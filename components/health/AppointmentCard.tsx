@@ -309,7 +309,7 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
           <View style={s.emptyState}>
             <Text style={s.emptyEmoji}>🩺</Text>
             <Text style={s.emptyTxt}>No visits logged yet</Text>
-            <Text style={s.emptySub}>Tap "Log Visit" to record a doctor visit</Text>
+            <Text style={s.emptySub}>{"Tap \"Log Visit\" to record a doctor visit"}</Text>
           </View>
         ) : (
           recent.map((apt, idx) => {
