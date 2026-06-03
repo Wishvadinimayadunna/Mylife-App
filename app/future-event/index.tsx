@@ -90,38 +90,6 @@ const TIME_PRESETS = [
   { label: "Night (8:00 PM)", value: "8:00 PM" },
 ];
 
-export type VoiceStage = "idle" | "detectingTemplate" | "title" | "date" | "time" | "location" | "review" | "complete";
-
-export type VoiceTemplateType = "Birthday" | "Anniversary" | "Meeting" | "Vacation" | "Interview" | "Party" | "Wedding" | "Doctor Appointment" | "Family Event" | "Reminder";
-
-export interface TemplateField {
-  name: "title" | "date" | "time" | "location";
-  required: boolean;
-  prompt: { en: string; si: string };
-}
-
-export interface VoiceTemplate {
-  name: VoiceTemplateType;
-  icon: string;
-  backendType: EventType;
-  keywords: string[];
-  fields: TemplateField[];
-  defaultRecurringYearly?: boolean;
-}
-
-export const VOICE_TEMPLATES: Record<VoiceTemplateType, VoiceTemplate> = {
-  Birthday: { name: "Birthday", icon: "🎂", backendType: "Birthday", keywords: ["birthday", "birth day", "bday", "b-day", "birthday party", "birth anniversary", "උපන්දිනය", "උපන්දිනේ"], fields: [{ name: "title", required: true, prompt: { en: "Whose birthday is it?", si: "මේ කාගේ උපන්දිනයක්ද?" } }, { name: "date", required: true, prompt: { en: "When is the birthday?", si: "උපන්දිනය යෙදෙන්නේ කවදාටද?" } }], defaultRecurringYearly: true },
-  Anniversary: { name: "Anniversary", icon: "💍", backendType: "Anniversary", keywords: ["anniversary", "wedding anniversary", "engagement anniversary", "jubilee", "සංවත්සරය"], fields: [{ name: "title", required: true, prompt: { en: "Whose anniversary is it?", si: "සංවත්සරය කාගේද?" } }, { name: "date", required: true, prompt: { en: "When is the anniversary?", si: "සංවත්සරය යෙදෙන්නේ කවදාටද?" } }], defaultRecurringYearly: true },
-  Meeting: { name: "Meeting", icon: "👥", backendType: "Meeting", keywords: ["meeting", "sync", "standup", "discussion", "call", "appointment", "conference", "briefing", "one-on-one", "හමුව", "රැස්වීම"], fields: [{ name: "title", required: true, prompt: { en: "What is the meeting title?", si: "රැස්වීමේ මාතෘකාව කුමක්ද?" } }, { name: "date", required: true, prompt: { en: "What date is the meeting?", si: "රැස්වීම පැවැත්වෙන දිනය කුමක්ද?" } }, { name: "time", required: true, prompt: { en: "What time is the meeting?", si: "රැස්වීම පැවැත්වෙන වේලාව කීයද?" } }] },
-  Vacation: { name: "Vacation", icon: "✈️", backendType: "Vacation", keywords: ["vacation", "trip", "holiday", "tour", "getaway", "journey", "සංචාරය", "නිවාඩුව"], fields: [{ name: "location", required: true, prompt: { en: "Where are you going?", si: "ඔබ සංචාරය කරන්නේ කොහේද?" } }, { name: "date", required: true, prompt: { en: "When are you going?", si: "සංචාරය කරන්නේ කවදාද?" } }] },
-  Interview: { name: "Interview", icon: "💼", backendType: "Interview", keywords: ["interview", "job interview", "assessment", "technical interview", "screening", "audition", "සම්මුඛ පරීක්ෂණය"], fields: [{ name: "title", required: true, prompt: { en: "What is the interview title?", si: "සම්මුඛ පරීක්ෂණයේ මාතෘකාව කුමක්ද?" } }, { name: "date", required: true, prompt: { en: "What date is the interview?", si: "සම්මුඛ පරීක්ෂණය තියෙන්නේ කවදාද?" } }, { name: "time", required: true, prompt: { en: "What time is the interview?", si: "සම්මුඛ පරීක්ෂණය තියෙන්නේ කීයටද?" } }] },
-  Party: { name: "Party", icon: "🎉", backendType: "Party", keywords: ["party", "celebration", "gathering", "dinner", "get-together", "get together", "bash", "reception", "සාදය"], fields: [{ name: "title", required: true, prompt: { en: "What is the party for?", si: "සාදය කුමක් සඳහාද?" } }, { name: "date", required: true, prompt: { en: "What date is the party?", si: "සාදය පැවැත්වෙන්නේ කවදාද?" } }, { name: "time", required: true, prompt: { en: "What time is the party?", si: "සාදය පැවැත්වෙන්නේ කීයටද?" } }] },
-  Wedding: { name: "Wedding", icon: "💒", backendType: "Wedding", keywords: ["wedding", "marriage", "matrimony", "nuptials", "marriage ceremony", "විවාහය"], fields: [{ name: "title", required: true, prompt: { en: "Whose wedding is it?", si: "කාගේ විවාහ මංගල්‍යයද?" } }, { name: "date", required: true, prompt: { en: "When is the wedding?", si: "විවාහ මංගල්‍යය පැවැත්වෙන්නේ කවදාද?" } }] },
-  "Doctor Appointment": { name: "Doctor Appointment", icon: "🏥", backendType: "Other", keywords: ["doctor", "hospital", "medical appointment", "clinic", "වෛද්‍ය", "රෝහල"], fields: [{ name: "title", required: true, prompt: { en: "What is the doctor's name?", si: "වෛද්‍යවරයාගේ නම කුමක්ද?" } }, { name: "date", required: true, prompt: { en: "What date is the appointment?", si: "හමුවීමට දිනය කුමක්ද?" } }, { name: "time", required: true, prompt: { en: "What time is the appointment?", si: "හමුවීමේ වේලාව කීයද?" } }, { name: "location", required: true, prompt: { en: "Which hospital or clinic?", si: "රෝහල හෝ සායනය කුමක්ද?" } }] },
-  "Family Event": { name: "Family Event", icon: "👨‍👩‍👧‍👦", backendType: "Other", keywords: ["family gathering", "family event", "family meeting", "පවුලේ උත්සවය"], fields: [{ name: "title", required: true, prompt: { en: "What is the family event?", si: "පවුලේ උත්සවය කුමක්ද?" } }, { name: "date", required: true, prompt: { en: "When is the event?", si: "උත්සවය පැවැත්වෙන්නේ කවදාද?" } }, { name: "time", required: true, prompt: { en: "What time is the event?", si: "උත්සවය පැවැත්වෙන්නේ කීයටද?" } }, { name: "location", required: true, prompt: { en: "Where is the event?", si: "උත්සවය පැවැත්වෙන්නේ කොහේද?" } }] },
-  Reminder: { name: "Reminder", icon: "⏰", backendType: "Other", keywords: ["remind me", "reminder", "මතක් කරන්න"], fields: [{ name: "title", required: true, prompt: { en: "What do you want to be reminded of?", si: "මතක් කළ යුත්තේ කුමක්ද?" } }, { name: "date", required: true, prompt: { en: "When should I remind you?", si: "මතක් කළ යුත්තේ කවදාද?" } }, { name: "time", required: true, prompt: { en: "At what time?", si: "වේලාව කීයටද?" } }] }
-};
-
 interface VoicePreview {
   title: string;
   type: EventType;
@@ -134,7 +102,6 @@ interface VoicePreview {
   isLocationSpecified: boolean;
   confidenceScore: number;
   confidenceLevel: "High" | "Medium" | "Needs Review";
-  templateName?: VoiceTemplateType;
 }
 
 export default function FutureEventScreen() {
@@ -171,9 +138,6 @@ export default function FutureEventScreen() {
   // Voice template state
   const [voiceInputText, setVoiceInputText] = useState("");
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
-  const [voiceStage, setVoiceStage] = useState<VoiceStage>("idle");
-  const [voiceDetectedLanguage, setVoiceDetectedLanguage] = useState<"en" | "si">("en");
-  const [selectedTemplate, setSelectedTemplate] = useState<VoiceTemplateType | null>(null);
 
   // Target selections for modals (composer vs voice preview)
   const [calendarTarget, setCalendarTarget] = useState<"composer" | "voice" | null>(null);
@@ -224,52 +188,85 @@ export default function FutureEventScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
-  // Ref to process speech — avoids stale closure in native listeners
-  const processSpeechTextRef = React.useRef<(text: string) => void>(() => {});
-
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.language) {
-      if (navigator.language.toLowerCase().startsWith("si")) {
-        setVoiceDetectedLanguage("si");
-      }
-    }
-  }, []);
-
   useEffect(() => {
     const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
 
     if (Platform.OS !== "web" && isNativeModuleAvailable) {
       const Voice = require("@react-native-voice/voice").default;
-      Voice.onSpeechStart = () => { setIsListening(true); setVoiceError(null); };
-      Voice.onSpeechEnd = () => { setIsListening(false); };
-      Voice.onSpeechError = (e: any) => { setVoiceError(e.error?.message || e.message || "Speech recognition error"); setIsListening(false); };
-      Voice.onSpeechResults = (e: any) => {
+      
+      const onSpeechStart = () => {
+        setIsListening(true);
+        setVoiceError(null);
+      };
+      
+      const onSpeechEnd = () => {
+        setIsListening(false);
+      };
+      
+      const onSpeechError = (e: any) => {
+        console.error("Native onSpeechError:", e);
+        setVoiceError(e.error?.message || "Speech recognition error");
+        setIsListening(false);
+      };
+      
+      const onSpeechResults = (e: any) => {
         if (e.value && e.value.length > 0) {
           const txt = e.value[0];
           setVoiceInputText(txt);
-          processSpeechTextRef.current(txt);
+          const parsed = parseNaturalLanguageEvent(txt);
+          setVoicePreview(parsed);
         }
       };
-      return () => { Voice.destroy().then(() => Voice.removeAllListeners()).catch(() => {}); };
+      
+      Voice.onSpeechStart = onSpeechStart;
+      Voice.onSpeechEnd = onSpeechEnd;
+      Voice.onSpeechError = onSpeechError;
+      Voice.onSpeechResults = onSpeechResults;
+      
+      return () => {
+        Voice.destroy().then(() => {
+          Voice.removeAllListeners();
+        }).catch((err: any) => {
+          console.error("Voice destroy error:", err);
+        });
+      };
     } else {
+      // Web speech recognition setup
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const rec = new SpeechRecognition();
         rec.continuous = false;
         rec.interimResults = true;
         rec.lang = "en-US";
-        rec.onstart = () => { setIsListening(true); setVoiceError(null); };
-        rec.onend = () => { setIsListening(false); };
-        rec.onerror = (e: any) => { setVoiceError(e.error || "Speech recognition error"); setIsListening(false); };
+        
+        rec.onstart = () => {
+          setIsListening(true);
+          setVoiceError(null);
+        };
+        
+        rec.onend = () => {
+          setIsListening(false);
+        };
+        
+        rec.onerror = (e: any) => {
+          console.error("Web SpeechRecognition error:", e);
+          setVoiceError(e.error || "Speech recognition error");
+          setIsListening(false);
+        };
+        
         rec.onresult = (e: any) => {
           let segments = [];
-          for (let i = 0; i < e.results.length; i++) segments.push(e.results[i][0].transcript.trim());
+          for (let i = 0; i < e.results.length; i++) {
+            segments.push(e.results[i][0].transcript.trim());
+          }
           const fullTranscript = segments.filter(Boolean).join(" ");
           setVoiceInputText(fullTranscript);
-          if (e.results[0]?.isFinal || !rec.interimResults) {
-            if (fullTranscript.trim()) processSpeechTextRef.current(fullTranscript);
+          if (fullTranscript.trim()) {
+            const parsed = parseNaturalLanguageEvent(fullTranscript);
+            setVoicePreview(parsed);
           }
         };
+        
         setWebRecognitionInstance(rec);
       }
     }
@@ -703,202 +700,106 @@ export default function FutureEventScreen() {
     return normalizedDate;
   };
 
-  // ─── Voice Assistant Engine ───────────────────────────────
-  const detectVoiceTemplate = (text: string): VoiceTemplateType | null => {
-    const lower = text.toLowerCase().trim();
-    for (const key of Object.keys(VOICE_TEMPLATES) as VoiceTemplateType[]) {
-      if (VOICE_TEMPLATES[key].keywords.some(kw => lower.includes(kw.toLowerCase()))) return key;
-    }
-    return null;
-  };
-
-  const parseSinhalaDate = (text: string): { date: Date; isSpecified: boolean } => {
-    const str = text.toLowerCase().trim();
-    const today = new Date(); today.setHours(0,0,0,0);
-    if (str.includes("හෙට") || str.includes("heta")) { const d = new Date(today); d.setDate(today.getDate()+1); return { date: d, isSpecified: true }; }
-    if (str.includes("අද") || str.includes("ada")) return { date: new Date(today), isSpecified: true };
-    if (str.includes("ලබන සතියේ") || str.includes("labana sathiye")) { const d = new Date(today); d.setDate(today.getDate()+7); return { date: d, isSpecified: true }; }
-    if (str.includes("ලබන මාසයේ") || str.includes("labana masaye")) { const d = new Date(today); d.setMonth(today.getMonth()+1); return { date: d, isSpecified: true }; }
-    const sinhalaWeekdays = ["ඉරිදා","සඳුදා","අඟහරුවාදා","බදාදා","බ්‍රහස්පතින්දා","සිකුරාදා","සෙනසුරාදා"];
-    const engWeekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-    for (let i = 0; i < 7; i++) {
-      if (str.includes(sinhalaWeekdays[i]) || str.includes(engWeekdays[i])) {
-        let diff = i - today.getDay(); if (diff <= 0) diff += 7;
-        if (str.includes("ලබන") || str.includes("next")) diff += 7;
-        const d = new Date(today); d.setDate(today.getDate()+diff); return { date: d, isSpecified: true };
-      }
-    }
-    const months: {[k:string]:number} = {"ජනවාරි":0,"january":0,"jan":0,"පෙබරවාරි":1,"february":1,"feb":1,"මාර්තු":2,"march":2,"mar":2,"අප්‍රේල්":3,"april":3,"apr":3,"මැයි":4,"may":4,"ජුනි":5,"june":5,"jun":5,"ජූලි":6,"july":6,"jul":6,"අගෝස්තු":7,"august":7,"aug":7,"සැප්තැම්බර්":8,"september":8,"sep":8,"ඔක්තෝබර්":9,"october":9,"oct":9,"නොවැම්බර්":10,"november":10,"nov":10,"දෙසැම්බර්":11,"december":11,"dec":11};
-    for (const mName of Object.keys(months)) {
-      if (str.includes(mName)) {
-        const nums = str.match(/\b\d+/g) || []; let day = today.getDate(); let year = today.getFullYear(); let found = false;
-        for (const n of nums) { const v = parseInt(n,10); if (n.length===4) year=v; else if (v>=1&&v<=31&&!found){day=v;found=true;} }
-        let d = new Date(year, months[mName], day);
-        if (d < today && !str.includes(String(year))) d.setFullYear(year+1);
-        return { date: d, isSpecified: true };
-      }
-    }
-    return parseNaturalDateWithSpec(text);
-  };
-
-  const parseSinhalaTime = (text: string): { time: string; isSpecified: boolean } => {
-    const str = text.toLowerCase().trim();
-    const m = str.match(/(\d{1,2})[:.]?(\d{2})?\s*ට/);
-    if (m) {
-      const hr = parseInt(m[1],10); const min = m[2]||"00";
-      const isPM = str.includes("හවස")||str.includes("සවස")||str.includes("දවල්")||str.includes("රෑ");
-      const isAM = str.includes("උදේ")||str.includes("පාන්දර");
-      const ampm = isPM?"PM":isAM?"AM":(hr>=12||hr<7)?"PM":"AM";
-      return { time: `${hr>12?hr-12:hr}:${min} ${ampm}`, isSpecified: true };
-    }
-    if (str.includes("මධ්‍යහ්න")||str.includes("දවල් 12")) return { time: "12:00 PM", isSpecified: true };
-    return parseNaturalTime(text);
-  };
-
-  const parseSinhalaLocation = (text: string): { location: string; isSpecified: boolean } => {
-    const deeM = text.match(/([a-zA-Z\u0D80-\u0DFF\s]+)දී/);
-    if (deeM) return { location: deeM[1].trim(), isSpecified: true };
-    const lagaM = text.match(/([a-zA-Z\u0D80-\u0DFF\s]+)\s+ළඟ/);
-    if (lagaM) return { location: lagaM[1].trim(), isSpecified: true };
-    return parseNaturalLocation(text);
-  };
-
-  const getNextVoiceStage = (templateType: VoiceTemplateType, preview: VoicePreview): VoiceStage => {
-    for (const field of VOICE_TEMPLATES[templateType].fields) {
-      if (!field.required) continue;
-      if (field.name === "title" && !preview.title.trim()) return "title";
-      if (field.name === "date" && !preview.isDateSpecified) return "date";
-      if (field.name === "time" && !preview.isTimeSpecified) return "time";
-      if (field.name === "location" && !preview.isLocationSpecified) return "location";
-    }
-    return "review";
-  };
-
-  const getFieldPrompt = (templateType: VoiceTemplateType, stage: VoiceStage): string => {
-    const field = VOICE_TEMPLATES[templateType].fields.find(f => f.name === stage);
-    if (!field) return "";
-    return voiceDetectedLanguage === "en" ? field.prompt.en : field.prompt.si;
-  };
-
-  const handleInitialVoiceUtterance = (text: string) => {
-    setVoiceInputText(text);
-    if (!text.trim()) return;
-    const templateType = detectVoiceTemplate(text);
-    if (templateType) {
-      setSelectedTemplate(templateType);
-      const template = VOICE_TEMPLATES[templateType];
-      let dateVal = new Date(), isDateSpecified = false, timeVal = "10:00 AM", isTimeSpecified = false, locVal = "", isLocSpecified = false, titleVal = "";
-      if (voiceDetectedLanguage === "si") {
-        const dR = parseSinhalaDate(text); dateVal = dR.date; isDateSpecified = dR.isSpecified;
-        const tR = parseSinhalaTime(text); timeVal = tR.time||"10:00 AM"; isTimeSpecified = tR.isSpecified;
-        const lR = parseSinhalaLocation(text); locVal = lR.location; isLocSpecified = lR.isSpecified;
-        const pM = text.match(/([a-zA-Z\u0D80-\u0DFF]+)ගේ\s+(උපන්දිනය|සංවත්සරය|විවාහය)/);
-        if (pM) titleVal = pM[1].trim();
-      } else {
-        const dR = parseNaturalDateWithSpec(text); dateVal = dR.date; isDateSpecified = dR.isSpecified;
-        const tR = parseNaturalTime(text); timeVal = tR.time||"10:00 AM"; isTimeSpecified = tR.isSpecified;
-        const lR = parseNaturalLocation(text); locVal = lR.location; isLocSpecified = lR.isSpecified;
-        if (templateType==="Birthday"||templateType==="Anniversary"||templateType==="Wedding") {
-          const bM = text.match(/([a-zA-Z\s]+?)\s+(birthday|bday|anniversary|wedding)/i);
-          if (bM) titleVal = bM[1].replace(/\b(my|your|his|her|our|their)\b/gi,"").trim();
-        } else if (templateType==="Doctor Appointment") {
-          const dM = text.match(/\bdoctor\s+([a-zA-Z\s]+)/i);
-          if (dM) titleVal = dM[1].replace(/\b(appointment|visit|at|in|on|with|for)\b.*$/gi,"").trim();
-        } else if (templateType==="Meeting") {
-          const mM = text.match(/\bmeeting\s+(with|about)\s+([a-zA-Z\s]+)/i);
-          if (mM) titleVal = ("Meeting "+mM[1]+" "+mM[2]).replace(/\b(at|in|on|next|tomorrow|today|this)\b.*$/gi,"").trim();
-        }
-      }
-      if (!titleVal) {
-        let c = text;
-        template.keywords.forEach(kw => { c = c.replace(new RegExp(`\\b${kw}\\b`,'gi'),""); });
-        titleVal = c.replace(/^(with|about|to)\s+/i,"").trim();
-      }
-      const preview: VoicePreview = {
-        title: titleVal, type: template.backendType, date: dateVal, time: timeVal, location: locVal,
-        isRecurringYearly: !!template.defaultRecurringYearly, isDateSpecified, isTimeSpecified,
-        isLocationSpecified: isLocSpecified, confidenceScore: 100, confidenceLevel: "High", templateName: templateType
-      };
-      setVoicePreview(preview);
-      const next = getNextVoiceStage(templateType, preview);
-      setVoiceStage(next);
-      if (next !== "review") setTimeout(() => startVoiceRecognition(), 1200);
-    } else {
-      setVoicePreview(parseNaturalLanguageEvent(text));
-      setVoiceStage("review");
-    }
-  };
-
-  const handleGuidedVoiceInput = (text: string, stage: VoiceStage) => {
-    if (!voicePreview || !selectedTemplate) return;
-    const up = { ...voicePreview };
-    if (stage==="title") { up.title = text.trim(); }
-    else if (stage==="date") { const r = voiceDetectedLanguage==="si"?parseSinhalaDate(text):parseNaturalDateWithSpec(text); up.date=r.date; up.isDateSpecified=r.isSpecified; }
-    else if (stage==="time") { const r = voiceDetectedLanguage==="si"?parseSinhalaTime(text):parseNaturalTime(text); up.time=r.time||"10:00 AM"; up.isTimeSpecified=r.isSpecified; }
-    else if (stage==="location") { const r = voiceDetectedLanguage==="si"?parseSinhalaLocation(text):parseNaturalLocation(text); up.location=r.location||text.trim(); up.isLocationSpecified=true; }
-    setVoicePreview(up);
-    const next = getNextVoiceStage(selectedTemplate, up);
-    setVoiceStage(next);
-    if (next !== "review") setTimeout(() => startVoiceRecognition(), 1200);
-  };
-
-  processSpeechTextRef.current = (text: string) => {
-    if (voiceStage==="idle"||voiceStage==="detectingTemplate") handleInitialVoiceUtterance(text);
-    else if (voiceStage==="review") {
-      const lw = text.toLowerCase().trim();
-      if (["create event","confirm","create","yes","හරි","එකඟයි"].includes(lw)) handleConfirmVoiceEvent();
-    } else handleGuidedVoiceInput(text, voiceStage);
-  };
-
   const startVoiceRecognition = async () => {
     setVoiceError(null);
-    if (isListening) { await stopVoiceRecognition(); return; }
-    const locale = voiceDetectedLanguage === "en" ? "en-US" : "si-LK";
+    if (isListening) {
+      await stopVoiceRecognition();
+      return;
+    }
+    
     if (Platform.OS === "web") {
       if (webRecognitionInstance) {
-        try { webRecognitionInstance.lang = locale; webRecognitionInstance.start(); }
-        catch (e) { console.error("Failed to start web recognition:", e); }
-      } else { Alert.alert("Not Supported", "Speech recognition is not supported in this browser."); }
+        try {
+          webRecognitionInstance.start();
+        } catch (e) {
+          console.error("Failed to start web recognition:", e);
+        }
+      } else {
+        Alert.alert("Not Supported", "Speech recognition is not supported in this browser.");
+      }
     } else {
       const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
       if (!isNativeModuleAvailable) {
-        Alert.alert("🎤 Keyboard Mic Fallback (Expo Go)", "Direct microphone recording is not supported in standard Expo Go. Please use the microphone icon on your device keyboard to dictate text instead.");
+        Alert.alert(
+          "🎤 Keyboard Mic Fallback (Expo Go)",
+          "Direct microphone recording is not supported in standard Expo Go. Please use the microphone icon on your device keyboard to dictate text instead."
+        );
         return;
       }
-      try { const Voice = require("@react-native-voice/voice").default; await Voice.start(locale); }
-      catch (e: any) { Alert.alert("Error", "Could not start voice recognition: " + (e.message || e)); }
+      try {
+        const Voice = require("@react-native-voice/voice").default;
+        await Voice.start("en-US");
+      } catch (e: any) {
+        console.error("Voice start error:", e);
+        Alert.alert("Error", "Could not start voice recognition: " + (e.message || e));
+      }
     }
   };
 
   const stopVoiceRecognition = async () => {
     if (Platform.OS === "web") {
-      if (webRecognitionInstance) { try { webRecognitionInstance.stop(); } catch (e) {} }
+      if (webRecognitionInstance) {
+        try {
+          webRecognitionInstance.stop();
+        } catch (e) {
+          console.error("Failed to stop web recognition:", e);
+        }
+      }
     } else {
-      try { const Voice = require("@react-native-voice/voice").default; await Voice.stop(); } catch (e) {}
+      try {
+        const Voice = require("@react-native-voice/voice").default;
+        await Voice.stop();
+      } catch (e) {
+        console.error("Voice stop error:", e);
+      }
     }
     setIsListening(false);
   };
 
+  // Submit parsed Voice Template
   const handleConfirmVoiceEvent = async () => {
     if (!profile || !voicePreview) return;
-    let title = voicePreview.title.trim() || `${voicePreview.type} Event`;
-    if (selectedTemplate === "Vacation" && voicePreview.location) title = voiceDetectedLanguage==="si" ? `සංචාරය - ${voicePreview.location}` : `Vacation to ${voicePreview.location}`;
-    if (selectedTemplate === "Doctor Appointment" && title && !title.toLowerCase().startsWith("doctor") && !title.toLowerCase().startsWith("dr")) title = `Doctor: ${title}`;
-    if (!voicePreview.date || isNaN(voicePreview.date.getTime())) { Alert.alert("Invalid Date", "Please select a valid date."); return; }
-    if (!/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(voicePreview.time) && !/^\d{1,2}\s*(AM|PM)$/i.test(voicePreview.time)) { Alert.alert("Invalid Time", "Please select a valid time."); return; }
-    let backendType = voicePreview.type;
-    if (selectedTemplate === "Doctor Appointment") backendType = "Meeting";
-    else if (selectedTemplate === "Family Event" || selectedTemplate === "Reminder") backendType = "Other";
+
+    let title = voicePreview.title.trim();
+    if (!title) {
+      title = `${voicePreview.type} Event`;
+    }
+
+    if (!voicePreview.date || isNaN(voicePreview.date.getTime())) {
+      Alert.alert("Invalid Date", "Please select a valid date for the event.");
+      return;
+    }
+
+    const timeRegex = /^\d{1,2}:\d{2}\s*(AM|PM)$/i;
+    const hourRegex = /^\d{1,2}\s*(AM|PM)$/i;
+    const isValidTime = timeRegex.test(voicePreview.time) || hourRegex.test(voicePreview.time);
+    if (!isValidTime) {
+      Alert.alert("Invalid Time", "Please enter or select a valid time (e.g. 3:00 PM or 3 PM)");
+      return;
+    }
+
     try {
       await futureEventService.addEvent({
-        profileID: profile.id, title, type: backendType, eventDate: voicePreview.date, eventTime: voicePreview.time,
+        profileID: profile.id,
+        title: title,
+        type: voicePreview.type,
+        eventDate: voicePreview.date,
+        eventTime: voicePreview.time,
         location: voicePreview.location.trim() || undefined,
         reminderOptions: voicePreview.isRecurringYearly ? ["same_day"] : ["1_day_before"],
-        sendReminderToSpouse: false, isShared: false, isRecurringYearly: voicePreview.isRecurringYearly,
+        sendReminderToSpouse: false,
+        isShared: false,
+        isRecurringYearly: voicePreview.isRecurringYearly,
       });
-      setVoiceInputText(""); setVoicePreview(null); setVoiceStage("idle"); setSelectedTemplate(null); setActivePanel(null);
-      loadEvents(); Alert.alert("Success", "Event created from voice template!");
-    } catch (err: any) { Alert.alert("Error", err.message || "Failed to create event"); }
+
+      setVoiceInputText("");
+      setVoicePreview(null);
+      setActivePanel(null);
+      loadEvents();
+      Alert.alert("Success", "Event created from voice template!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create event");
+    }
   };
 
   // Submit Manual Event Composer
@@ -1351,152 +1252,212 @@ export default function FutureEventScreen() {
               {activePanel === 'voice' && (
                 <View style={styles.panelContent}>
 
-                  {/* Language Chips */}
-                  <View style={styles.voiceLanguageRow}>
-                    <Text style={styles.voiceLanguageLabel}>{voiceDetectedLanguage === "en" ? "Language:" : "භාෂාව:"}</Text>
-                    <View style={styles.languageChips}>
-                      <TouchableOpacity style={[styles.langChip, voiceDetectedLanguage === "en" && styles.langChipActive]}
-                        onPress={() => { setVoiceDetectedLanguage("en"); if (isListening) { stopVoiceRecognition().then(() => setTimeout(() => startVoiceRecognition(), 200)); } }}>
-                        <Text style={[styles.langChipText, voiceDetectedLanguage === "en" && styles.langChipTextActive]}>🇺🇸 English</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.langChip, voiceDetectedLanguage === "si" && styles.langChipActive]}
-                        onPress={() => { setVoiceDetectedLanguage("si"); if (isListening) { stopVoiceRecognition().then(() => setTimeout(() => startVoiceRecognition(), 200)); } }}>
-                        <Text style={[styles.langChipText, voiceDetectedLanguage === "si" && styles.langChipTextActive]}>🇱🇰 Sinhala</Text>
-                      </TouchableOpacity>
-                    </View>
+                  <View style={styles.voiceInputWrapper}>
+                    <TextInput
+                      style={styles.voiceTextInput}
+                      value={voiceInputText}
+                      onChangeText={(txt) => {
+                        setVoiceInputText(txt);
+                        if (txt.trim()) {
+                          const parsed = parseNaturalLanguageEvent(txt);
+                          setVoicePreview(parsed);
+                        } else {
+                          setVoicePreview(null);
+                        }
+                      }}
+                      placeholder="e.g. dinner with Sarah next Friday at 7 PM in Bistro"
+                      placeholderTextColor="#9CA3AF"
+                    />
+                    <TouchableOpacity 
+                      style={[styles.inlineMicrophoneBtn, isListening && styles.inlineMicrophoneBtnListening]}
+                      onPress={startVoiceRecognition}
+                    >
+                      <MaterialCommunityIcons name={isListening ? "stop" : "microphone"} size={18} color="#FFF" />
+                    </TouchableOpacity>
                   </View>
 
-                  {/* IDLE stage */}
-                  {voiceStage === "idle" && (
-                    <View style={styles.voiceIntroContainer}>
-                      <Text style={styles.voiceIntroText}>
-                        {voiceDetectedLanguage === "en"
-                          ? "Tap the mic and say a keyword like \"Meeting\", \"Birthday\", or \"Doctor Appointment\"."
-                          : "මයික්‍රෆෝනය ඔබා 'රැස්වීම', 'උපන්දිනය' හෝ 'වෛද්‍ය හමුව' වැනි වචනයක් පවසන්න."}
-                      </Text>
-                      <TouchableOpacity style={styles.voiceAssistantMicBtn}
-                        onPress={() => { setVoiceStage("detectingTemplate"); setVoiceInputText(""); startVoiceRecognition(); }}>
-                        <MaterialCommunityIcons name="microphone" size={32} color="#FFF" />
-                      </TouchableOpacity>
-                      <Text style={styles.voiceAssistantMicSub}>{voiceDetectedLanguage === "en" ? "🎤 Start Voice Assistant" : "🎤 හඬ සහායක අරඹන්න"}</Text>
+                  {isListening && (
+                    <View style={styles.listeningContainer}>
+                      <ActivityIndicator size="small" color="#7C3AED" />
+                      <Text style={styles.listeningText}>Listening... Speak now.</Text>
+                    </View>
+                  )}
+                  {voiceError && (
+                    <View style={styles.voiceErrorContainer}>
+                      <Text style={styles.voiceErrorText}>⚠️ {voiceError}</Text>
                     </View>
                   )}
 
-                  {/* DETECTING stage */}
-                  {voiceStage === "detectingTemplate" && (
-                    <View style={styles.voiceAssistantCard}>
-                      <View style={styles.voiceHeaderRow}>
-                        <ActivityIndicator size="small" color="#7C3AED" style={{ marginRight: 8 }} />
-                        <Text style={styles.voiceStateText}>{voiceDetectedLanguage === "en" ? "Detecting Template..." : "සැකිල්ල හඳුනාගනිමින්..."}</Text>
-                      </View>
-                      <Text style={styles.voiceTranscriptPreview}>{voiceInputText || (voiceDetectedLanguage === "en" ? "Listening for keyword..." : "කන් දෙමින්...")}</Text>
-                      <View style={styles.voiceActionButtonsRow}>
-                        <TouchableOpacity style={[styles.voiceActionBtn, styles.voiceStopBtn]} onPress={stopVoiceRecognition}>
-                          <MaterialCommunityIcons name="stop" size={18} color="#FFF" style={{ marginRight: 4 }} />
-                          <Text style={styles.voiceBtnText}>{voiceDetectedLanguage === "en" ? "Stop" : "නතර"}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.voiceActionBtn, styles.voiceResetBtn]}
-                          onPress={() => { stopVoiceRecognition(); setVoiceInputText(""); setVoicePreview(null); setVoiceStage("idle"); setSelectedTemplate(null); }}>
-                          <MaterialCommunityIcons name="refresh" size={18} color="#4B5563" style={{ marginRight: 4 }} />
-                          <Text style={[styles.voiceBtnText, { color: "#4B5563" }]}>{voiceDetectedLanguage === "en" ? "Reset" : "නැවත"}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* GUIDED stages: title / date / time / location */}
-                  {(voiceStage === "title" || voiceStage === "date" || voiceStage === "time" || voiceStage === "location") && (
-                    <View style={styles.voiceAssistantCard}>
-                      <View style={styles.voiceHeaderRow}>
-                        <Text style={styles.voiceTemplateBadge}>
-                          {selectedTemplate ? VOICE_TEMPLATES[selectedTemplate].icon : "✨"} {selectedTemplate || ""} {voiceDetectedLanguage === "en" ? "Template" : "සැකිල්ල"}
-                        </Text>
-                      </View>
-                      <Text style={styles.voiceStagePrompt}>{selectedTemplate ? getFieldPrompt(selectedTemplate, voiceStage) : ""}</Text>
-                      <Text style={styles.voiceTranscriptPreview}>
-                        {voiceInputText || (isListening
-                          ? (voiceDetectedLanguage === "en" ? "Listening..." : "කන් දෙමින්...")
-                          : (voiceDetectedLanguage === "en" ? "Tap to answer..." : "ඔබන්න..."))}
-                      </Text>
-                      <View style={styles.voiceActionButtonsRow}>
-                        <TouchableOpacity style={[styles.voiceActionBtn, isListening ? styles.voiceStopBtn : styles.voiceMicBtn]}
-                          onPress={() => { if (isListening) { stopVoiceRecognition(); } else { setVoiceInputText(""); startVoiceRecognition(); } }}>
-                          <MaterialCommunityIcons name={isListening ? "stop" : "microphone"} size={18} color="#FFF" style={{ marginRight: 4 }} />
-                          <Text style={styles.voiceBtnText}>{isListening ? (voiceDetectedLanguage === "en" ? "Stop" : "නතර") : (voiceDetectedLanguage === "en" ? "🎤 Speak Answer" : "🎤 පිළිතුර")}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.voiceActionBtn, styles.voiceResetBtn]}
-                          onPress={() => { stopVoiceRecognition(); setVoiceInputText(""); setVoicePreview(null); setVoiceStage("idle"); setSelectedTemplate(null); }}>
-                          <MaterialCommunityIcons name="refresh" size={18} color="#4B5563" style={{ marginRight: 4 }} />
-                          <Text style={[styles.voiceBtnText, { color: "#4B5563" }]}>{voiceDetectedLanguage === "en" ? "Reset" : "නැවත"}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* REVIEW stage */}
-                  {voiceStage === "review" && voicePreview && (
+                  {/* Live Parsed Interpretation Preview Card */}
+                  {voicePreview && (
                     <View style={styles.previewCard}>
+                      
+                      {/* Card Header with Template and Confidence */}
                       <View style={styles.previewCardHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.previewCardTitle}>{voiceDetectedLanguage === "en" ? "✨ Event Preview" : "✨ සැලසුම් කළ ඉසව්ව"}</Text>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.previewCardTitle}>✨ Interpreted Event Preview</Text>
                           <Text style={styles.detectedTemplateText}>
-                            {selectedTemplate ? `${VOICE_TEMPLATES[selectedTemplate].icon} ${VOICE_TEMPLATES[selectedTemplate].name}` : "NLP Mode"}
+                            Detected Template: {EVENT_ICONS[voicePreview.type]} {voicePreview.type} Template
+                          </Text>
+                        </View>
+                        
+                        {/* Confidence Badge */}
+                        <View style={[
+                          styles.confidenceBadge,
+                          voicePreview.confidenceLevel === "High" && styles.confidenceHigh,
+                          voicePreview.confidenceLevel === "Medium" && styles.confidenceMedium,
+                          voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLow,
+                        ]}>
+                          <Text style={[
+                            styles.confidenceBadgeText,
+                            voicePreview.confidenceLevel === "High" && styles.confidenceHighText,
+                            voicePreview.confidenceLevel === "Medium" && styles.confidenceMediumText,
+                            voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLowText,
+                          ]}>
+                            {voicePreview.confidenceLevel === "High" 
+                              ? "🟢 High Confidence" 
+                              : voicePreview.confidenceLevel === "Medium" 
+                                ? "🟡 Medium Confidence" 
+                                : "🔴 Needs Review"}{" "}
+                            ({voicePreview.confidenceScore}%)
                           </Text>
                         </View>
                       </View>
-                      <View style={styles.previewCardBody}>
-                        <Text style={styles.previewFieldLabel}>{voiceDetectedLanguage === "en" ? "Event Title" : "මාතෘකාව"}</Text>
-                        <TextInput style={styles.previewInput} value={voicePreview.title}
-                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, title: txt })}
-                          placeholder="Event Title" placeholderTextColor="#9CA3AF" />
 
-                        <Text style={styles.previewFieldLabel}>{voiceDetectedLanguage === "en" ? "Event Type" : "වර්ගය"}</Text>
+                      <View style={styles.previewCardBody}>
+                        
+                        {/* Title input */}
+                        <Text style={styles.previewFieldLabel}>Event Title</Text>
+                        <TextInput
+                          style={styles.previewInput}
+                          value={voicePreview.title}
+                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, title: txt })}
+                          placeholder="Event Title"
+                          placeholderTextColor="#9CA3AF"
+                        />
+
+                        {/* Category selection */}
+                        <Text style={styles.previewFieldLabel}>Event Type</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewTypesScroll}>
                           <View style={styles.typesRow}>
                             {EVENT_TYPES.map((type) => (
-                              <TouchableOpacity key={type}
-                                style={[styles.previewTypeChip, voicePreview.type === type && styles.previewTypeChipActive]}
-                                onPress={() => setVoicePreview({ ...voicePreview, type, isRecurringYearly: (type==="Birthday"||type==="Anniversary") ? true : voicePreview.isRecurringYearly })}>
-                                <Text style={[styles.previewTypeChipText, voicePreview.type === type && styles.previewTypeChipTextActive]}>{EVENT_ICONS[type]} {type}</Text>
+                              <TouchableOpacity
+                                key={type}
+                                style={[
+                                  styles.previewTypeChip,
+                                  voicePreview.type === type && styles.previewTypeChipActive,
+                                ]}
+                                onPress={() => {
+                                  const isBirthdayOrAnniversary = type === "Birthday" || type === "Anniversary";
+                                  setVoicePreview({ 
+                                    ...voicePreview, 
+                                    type,
+                                    isRecurringYearly: isBirthdayOrAnniversary ? true : voicePreview.isRecurringYearly
+                                  });
+                                }}
+                              >
+                                <Text style={[
+                                  styles.previewTypeChipText,
+                                  voicePreview.type === type && styles.previewTypeChipTextActive
+                                ]}>
+                                  {EVENT_ICONS[type]} {type}
+                                </Text>
                               </TouchableOpacity>
                             ))}
                           </View>
                         </ScrollView>
 
+                        {/* Date and Time selectors side by side */}
                         <View style={styles.previewSideBySide}>
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.previewFieldLabel}>{voiceDetectedLanguage === "en" ? "Date" : "දිනය"}</Text>
-                            <TouchableOpacity style={styles.previewSelectorBtn} onPress={() => { setCalendarTarget("voice"); setShowDateCalendar(true); }}>
-                              <Text style={styles.previewSelectorBtnText}>📅 {formatDate(voicePreview.date)}</Text>
+                            <Text style={styles.previewFieldLabel}>Date</Text>
+                            <TouchableOpacity
+                              style={styles.previewSelectorBtn}
+                              onPress={() => {
+                                setCalendarTarget("voice");
+                                setShowDateCalendar(true);
+                              }}
+                            >
+                              <Text style={styles.previewSelectorBtnText}>
+                                📅 {formatDate(voicePreview.date)}
+                              </Text>
                             </TouchableOpacity>
                           </View>
+
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.previewFieldLabel}>{voiceDetectedLanguage === "en" ? "Time" : "වේලාව"}</Text>
-                            <TouchableOpacity style={styles.previewSelectorBtn} onPress={() => { setTimePickerTarget("voice"); setShowTimePicker(true); }}>
-                              <Text style={styles.previewSelectorBtnText}>⏰ {voicePreview.time || "Select Time"}</Text>
+                            <Text style={styles.previewFieldLabel}>Time</Text>
+                            <TouchableOpacity
+                              style={styles.previewSelectorBtn}
+                              onPress={() => {
+                                setTimePickerTarget("voice");
+                                setShowTimePicker(true);
+                              }}
+                            >
+                              <Text style={styles.previewSelectorBtnText}>
+                                ⏰ {voicePreview.time || "Select Time"}
+                              </Text>
                             </TouchableOpacity>
                           </View>
                         </View>
+                        
+                        {/* Missing Time Warning */}
+                        {!voicePreview.isTimeSpecified && (
+                          <View style={styles.missingBadgeWarning}>
+                            <Text style={styles.missingBadgeWarningText}>
+                              ⚠️ Missing Time (using 10:00 AM default)
+                            </Text>
+                          </View>
+                        )}
 
-                        <Text style={styles.previewFieldLabel}>{voiceDetectedLanguage === "en" ? "Location" : "ස්ථානය"}</Text>
-                        <TextInput style={styles.previewInput} value={voicePreview.location}
+                        {/* Location input */}
+                        <Text style={styles.previewFieldLabel}>Location</Text>
+                        <TextInput
+                          style={styles.previewInput}
+                          value={voicePreview.location}
                           onChangeText={(txt) => setVoicePreview({ ...voicePreview, location: txt, isLocationSpecified: !!txt.trim() })}
-                          placeholder="Location (optional)" placeholderTextColor="#9CA3AF" />
+                          placeholder="e.g. Colombo (Optional)"
+                          placeholderTextColor="#9CA3AF"
+                        />
 
+                        {/* Missing Location Warning */}
+                        {!voicePreview.isLocationSpecified && (
+                          <View style={styles.missingBadgeWarning}>
+                            <Text style={styles.missingBadgeWarningText}>
+                              ⚠️ Missing Location
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Yearly Recurrence Switch */}
                         <View style={styles.previewSwitchRow}>
-                          <Text style={styles.previewSwitchLabel}>{voiceDetectedLanguage === "en" ? "Recurring Yearly" : "සෑම වසරකම"}</Text>
-                          <Switch value={voicePreview.isRecurringYearly}
+                          <Text style={styles.previewSwitchLabel}>Recurring Yearly</Text>
+                          <Switch
+                            value={voicePreview.isRecurringYearly}
                             onValueChange={(val) => setVoicePreview({ ...voicePreview, isRecurringYearly: val })}
-                            trackColor={{ false: "#D1D5DB", true: "#C084FC" }} thumbColor={voicePreview.isRecurringYearly ? "#7C3AED" : "#F3F4F6"} />
+                            trackColor={{ false: "#D1D5DB", true: "#C084FC" }}
+                            thumbColor={voicePreview.isRecurringYearly ? "#7C3AED" : "#F3F4F6"}
+                          />
                         </View>
+
                       </View>
+
+                      {/* Confirm & Cancel Buttons */}
                       <View style={styles.previewCardButtonsRow}>
-                        <TouchableOpacity style={[styles.previewActionBtn, styles.previewCancelBtn]}
-                          onPress={() => { setVoiceInputText(""); setVoicePreview(null); setVoiceStage("idle"); setSelectedTemplate(null); }}>
-                          <Text style={styles.previewCancelBtnText}>{voiceDetectedLanguage === "en" ? "🔄 Retry" : "🔄 නැවත"}</Text>
+                        <TouchableOpacity 
+                          style={[styles.previewActionBtn, styles.previewCancelBtn]}
+                          onPress={() => {
+                            setVoiceInputText("");
+                            setVoicePreview(null);
+                          }}
+                        >
+                          <Text style={styles.previewCancelBtnText}>Clear</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.previewActionBtn, styles.previewConfirmBtn]} onPress={handleConfirmVoiceEvent}>
-                          <Text style={styles.previewConfirmBtnText}>{voiceDetectedLanguage === "en" ? "Create Event" : "ඉසව්ව සාදන්න"}</Text>
+
+                        <TouchableOpacity 
+                          style={[styles.previewActionBtn, styles.previewConfirmBtn]}
+                          onPress={handleConfirmVoiceEvent}
+                        >
+                          <Text style={styles.previewConfirmBtnText}>Create Event</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -2950,29 +2911,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 20,
   },
-
-  // ── Voice Assistant Styles ──────────────────────────────────
-  voiceLanguageRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  voiceLanguageLabel: { fontSize: 13, fontWeight: "700", color: "#4B5563" },
-  languageChips: { flexDirection: "row", gap: 8 },
-  langChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "#F3F4F6", borderWidth: 1.5, borderColor: "transparent" },
-  langChipActive: { backgroundColor: "#EFF6FF", borderColor: "#2563EB" },
-  langChipText: { fontSize: 12, color: "#6B7280", fontWeight: "600" },
-  langChipTextActive: { color: "#1D4ED8", fontWeight: "700" },
-  voiceIntroContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 32, paddingHorizontal: 16 },
-  voiceIntroText: { fontSize: 13, color: "#6B7280", textAlign: "center", lineHeight: 18, marginBottom: 24 },
-  voiceAssistantMicBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#7C3AED", alignItems: "center", justifyContent: "center", shadowColor: "#7C3AED", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5, marginBottom: 12 },
-  voiceAssistantMicSub: { fontSize: 12, fontWeight: "600", color: "#7C3AED" },
-  voiceAssistantCard: { backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, borderWidth: 1.5, borderColor: "#E5E7EB", marginBottom: 12 },
-  voiceHeaderRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  voiceStateText: { fontSize: 12, fontWeight: "700", color: "#7C3AED" },
-  voiceTranscriptPreview: { fontSize: 14, color: "#374151", backgroundColor: "#FFFFFF", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: "#E5E7EB", minHeight: 50, lineHeight: 20, fontStyle: "italic", marginBottom: 16 },
-  voiceActionButtonsRow: { flexDirection: "row", gap: 12 },
-  voiceActionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 8 },
-  voiceStopBtn: { backgroundColor: "#EF4444" },
-  voiceMicBtn: { backgroundColor: "#7C3AED" },
-  voiceResetBtn: { backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "#D1D5DB" },
-  voiceBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
-  voiceTemplateBadge: { fontSize: 11, fontWeight: "700", color: "#7C3AED", backgroundColor: "#F3E8FF", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  voiceStagePrompt: { fontSize: 18, fontWeight: "800", color: "#1F2937", marginBottom: 12, lineHeight: 24 },
 });
