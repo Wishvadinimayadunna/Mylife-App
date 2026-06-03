@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppCard } from "../ui/AppCard";
 
 interface PrescriptionItem {
   medicineName: string;
@@ -303,7 +304,7 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
       </View>
 
       {/* Appointments list */}
-      <View style={s.card}>
+      <AppCard style={{ padding: 0, overflow: "hidden" }}>
         {recent.length === 0 ? (
           <View style={s.emptyState}>
             <Text style={s.emptyEmoji}>🩺</Text>
@@ -341,7 +342,7 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
             );
           })
         )}
-      </View>
+      </AppCard>
 
       {/* ── Add Visit Modal ── */}
       <Modal visible={showModal} transparent animationType="slide" onRequestClose={closeModal}>

@@ -5,6 +5,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import financeService from "@/services/financeService";
 import { useAppStore } from "@/store/appStore";
 import {
@@ -15,11 +19,10 @@ import {
   TransactionType,
 } from "@/types";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useState, useRef } from "react";
+import { Stack, useFocusEffect } from "expo-router";
+import React, { useState, useRef, useCallback } from "react";
 import {
   Alert,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,7 +32,6 @@ import {
 } from "react-native";
 
 // Colors conforming to design system tokens
-const COLOR_BLUE = "#2563EB";
 const COLOR_BORDER = "#E5E7EB";
 const COLOR_BG = "#F5F7FA";
 const COLOR_CARD = "#FFFFFF";
@@ -92,7 +94,6 @@ interface GroupedTransactions {
 
 export default function FinanceScreen() {
   const { profile } = useAppStore();
-  const router = useRouter();
   
   const [todaySummary, setTodaySummary] = useState<FinanceSummary>({
     totalIncome: 0,
@@ -103,8 +104,9 @@ export default function FinanceScreen() {
   const [recentTransactions, setRecentTransactions] = useState<FinanceTransaction[]>([]);
   const [prevBalance, setPrevBalance] = useState(0);
 
-  // Add/Edit Transaction Modal States
+  // Add/Edit Transaction Composer States
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [expandedTransactions, setExpandedTransactions] = useState<Record<string, boolean>>({});
   const [editingTransaction, setEditingTransaction] = useState<FinanceTransaction | null>(null);
   const [transactionType, setTransactionType] = useState<TransactionType>("income");
   const [amount, setAmount] = useState("");
@@ -127,15 +129,12 @@ export default function FinanceScreen() {
   const [alertDismissed, setAlertDismissed] = useState(false);
 
   const amountInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    loadFinanceData();
-    checkBudgetAlert();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, viewMode, customStartDate, customEndDate]);
+
 
   // Recalculates strictly the current month's budget details
-  const checkBudgetAlert = async () => {
+  const checkBudgetAlert = useCallback(async () => {
     if (!profile) return;
     const monthYear = `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
     const monthly = await financeService.getMonthlySummary(profile.id, monthYear);
@@ -154,13 +153,18 @@ export default function FinanceScreen() {
     setAlertLevel(level);
     setAlertRatio(ratio);
     setAlertDismissed(false);
-  };
+  }, [profile]);
 
-  const loadFinanceData = async () => {
+  const loadFinanceData = useCallback(async () => {
     if (!profile) return;
 
-    let summary: FinanceSummary;
-    let transactions: FinanceTransaction[];
+    let summary: FinanceSummary = {
+      totalIncome: 0,
+      totalExpense: 0,
+      balance: 0,
+      profitLossPercentage: 0,
+    };
+    let transactions: FinanceTransaction[] = [];
     let prevBal = 0;
 
     switch (viewMode) {
@@ -285,7 +289,14 @@ export default function FinanceScreen() {
     setTodaySummary(summary);
     setRecentTransactions(transactions);
     setPrevBalance(prevBal);
-  };
+  }, [profile, viewMode, customStartDate, customEndDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFinanceData();
+      checkBudgetAlert();
+    }, [loadFinanceData, checkBudgetAlert])
+  );
 
   const openAddModal = (type: TransactionType) => {
     setEditingTransaction(null);
@@ -296,6 +307,7 @@ export default function FinanceScreen() {
     setNotes("");
     setTransactionDate(new Date());
     setIsModalVisible(true);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const openEditModal = (t: FinanceTransaction) => {
@@ -310,6 +322,7 @@ export default function FinanceScreen() {
     setNotes(t.notes || "");
     setTransactionDate(new Date(t.date));
     setIsModalVisible(true);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const handleSaveTransaction = async () => {
@@ -357,9 +370,15 @@ export default function FinanceScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await financeService.deleteTransaction(transaction.id);
-            loadFinanceData();
-            checkBudgetAlert();
+            try {
+              await financeService.deleteTransaction(transaction.id);
+              Alert.alert("Success", "Transaction deleted successfully!");
+              loadFinanceData();
+              checkBudgetAlert();
+            } catch (error) {
+              console.error("Delete transaction error:", error);
+              Alert.alert("Error", "Failed to delete transaction");
+            }
           },
         },
       ]
@@ -368,10 +387,7 @@ export default function FinanceScreen() {
 
   const formatCurrency = (value: number) => `Rs. ${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-  const formatCurrencyCompact = (value: number) => {
-    if (value >= 100000) return `Rs. ${(value / 1000).toFixed(0)}k`;
-    return `Rs. ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  };
+
 
   const formatDate = (date: Date) => {
     const d = new Date(date);
@@ -473,10 +489,20 @@ export default function FinanceScreen() {
   const renderTransaction = (item: FinanceTransaction) => {
     const iconKey = getCategoryIconKey(item.category, item.type);
     const isInc = item.type === "income";
+    const isExpanded = !!expandedTransactions[item.id];
 
     return (
-      <View key={item.id} style={styles.transactionCard}>
-        <View style={styles.transactionCardMain}>
+      <AppCard key={item.id} stripeColor={isInc ? "#10B981" : "#EF4444"}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            setExpandedTransactions((prev) => ({
+              ...prev,
+              [item.id]: !prev[item.id],
+            }));
+          }}
+          style={styles.transactionCardMain}
+        >
           <View
             style={[
               styles.categoryIconContainer,
@@ -491,7 +517,7 @@ export default function FinanceScreen() {
             {item.notes ? (
               <Text
                 style={styles.transactionNotes}
-                numberOfLines={1}
+                numberOfLines={isExpanded ? undefined : 1}
                 ellipsizeMode="tail"
               >
                 {item.notes}
@@ -500,37 +526,46 @@ export default function FinanceScreen() {
           </View>
 
           <View style={styles.transactionRight}>
-            <Text
-              style={[
-                styles.transactionAmountText,
-                { color: isInc ? "#3B6D11" : "#A32D2D" },
-              ]}
-            >
-              {isInc ? "+" : "-"}{formatCurrency(item.amount)}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text
+                style={[
+                  styles.transactionAmountText,
+                  { color: isInc ? "#3B6D11" : "#A32D2D" },
+                ]}
+              >
+                {isInc ? "+" : "-"}{formatCurrency(item.amount)}
+              </Text>
+              <MaterialCommunityIcons
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={16}
+                color="#94A3B8"
+              />
+            </View>
             <Text style={styles.transactionDateSubtext}>
               {formatDate(item.date)}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        <View style={styles.transactionActions}>
-          <TouchableOpacity
-            style={styles.actionPillBtn}
-            onPress={() => openEditModal(item)}
-          >
-            <Text style={styles.actionPillBtnText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionPillBtn, styles.deletePillBtn]}
-            onPress={() => handleDeleteTransaction(item)}
-          >
-            <Text style={[styles.actionPillBtnText, styles.deletePillBtnText]}>
-              Delete
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {isExpanded && (
+          <View style={styles.transactionActions}>
+            <TouchableOpacity
+              style={styles.actionPillBtn}
+              onPress={() => openEditModal(item)}
+            >
+              <Text style={styles.actionPillBtnText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionPillBtn, styles.deletePillBtn]}
+              onPress={() => handleDeleteTransaction(item)}
+            >
+              <Text style={[styles.actionPillBtnText, styles.deletePillBtnText]}>
+                Delete
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </AppCard>
     );
   };
 
@@ -618,165 +653,108 @@ export default function FinanceScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ title: "Finance Tracker", headerShown: true }} />
       
-      {/* PREMIUM SOLID BLUE HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-          <Text style={styles.backTxt}>←</Text>
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Finance</Text>
-          <Text style={styles.headerSub}>
-            Income & Expense Tracker
-          </Text>
-        </View>
-        
-        {/* Header Stats Chips Row */}
-        <View style={styles.headerStatsRow}>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{formatCurrencyCompact(todaySummary.totalIncome)}</Text>
-            <Text style={styles.headerStatLabel}>In</Text>
-          </View>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{formatCurrencyCompact(todaySummary.totalExpense)}</Text>
-            <Text style={styles.headerStatLabel}>Out</Text>
-          </View>
-        </View>
-      </View>
-
       <View style={styles.container}>
-        {/* Segmented Period Pill Selector */}
-        <View style={styles.tabContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
-            {(["today", "week", "month", "custom"] as ViewMode[]).map((mode) => {
-              const isActive = viewMode === mode;
-              const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
-              return (
-                <TouchableOpacity
-                  key={mode}
-                  style={[styles.tabPill, isActive && styles.tabPillActive]}
-                  onPress={() => {
-                    setViewMode(mode);
-                    if (mode === "custom") {
-                      if (!customStartDate) setCustomStartDate(new Date());
-                      if (!customEndDate) setCustomEndDate(new Date());
-                    }
-                  }}
-                >
-                  <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>
-                    {modeLabel}
+        <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          
+          {/* Header Productivity Card styled after To-Do module */}
+          <View style={[styles.headerCard, { backgroundColor: "#2563EB", marginHorizontal: 16, marginTop: 16, marginBottom: 16, borderRadius: 16, borderColor: "#2563EB" }]}>
+            <View style={styles.headerTopRow}>
+              <View style={styles.greetingSection}>
+                <Text style={[styles.greetingTitle, { color: "#93C5FD" }]}>
+                  {"Net Balance · " + getViewTitle()}
+                </Text>
+                <Text style={[styles.greetingSubtitle, { color: "#FFFFFF", fontSize: 26, fontWeight: "700" }]}>
+                  {formatCurrency(todaySummary.balance)}
+                </Text>
+                
+                {/* Small profit/loss trend subtext */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, gap: 4 }}>
+                  <MaterialCommunityIcons
+                    name={pctChange >= 0 ? "trending-up" : "trending-down"}
+                    size={14}
+                    color="#93C5FD"
+                  />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#93C5FD" }}>
+                    {pctChange >= 0 ? "+" : ""}{pctChange.toFixed(1)}% vs prev. period
                   </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Custom Range Picker row beneath pills */}
-        {viewMode === "custom" && (
-          <View style={styles.dateRangeContainer}>
-            <TouchableOpacity
-              style={styles.dateRangeButton}
-              onPress={() => setShowStartCalendar(true)}
-            >
-              <Text style={styles.dateRangeLabel}>From:</Text>
-              <Text style={styles.dateRangeValue}>
-                {customStartDate ? formatDateFull(customStartDate) : "Select Date"}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.dateRangeSeparator}>→</Text>
-            <TouchableOpacity
-              style={styles.dateRangeButton}
-              onPress={() => setShowEndCalendar(true)}
-            >
-              <Text style={styles.dateRangeLabel}>To:</Text>
-              <Text style={styles.dateRangeValue}>
-                {customEndDate ? formatDateFull(customEndDate) : "Select Date"}
-              </Text>
-            </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Dynamic Usage Progress Ring */}
+              <View style={[styles.progressCircle, { borderColor: "#60A5FA", backgroundColor: "rgba(255,255,255,0.1)" }]}>
+                <Text style={[styles.progressPercentText, { color: "#FFFFFF" }]}>{Math.round(periodRatio)}%</Text>
+                <Text style={[styles.progressSubtext, { color: "#93C5FD" }]}>Spent</Text>
+              </View>
+            </View>
+            
+            {/* Quick Stat Chips */}
+            <View style={styles.statChipsRow}>
+              <StatChip
+                count={formatCurrency(todaySummary.totalIncome)}
+                label="Income"
+                type="success"
+              />
+              <StatChip
+                count={formatCurrency(todaySummary.totalExpense)}
+                label="Expense"
+                type="danger"
+              />
+              <StatChip
+                count={recentTransactions.length}
+                label="Logs"
+                type="default"
+              />
+            </View>
           </View>
-        )}
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {/* Segmented Period Pill Selector */}
+          <SegmentedControl
+            tabs={[
+              { id: "today", label: "Today" },
+              { id: "week", label: "Week" },
+              { id: "month", label: "Month" },
+              { id: "custom", label: "Custom" },
+            ]}
+            activeTab={viewMode}
+            onChange={(id) => {
+              setViewMode(id as ViewMode);
+              if (id === "custom") {
+                if (!customStartDate) setCustomStartDate(new Date());
+                if (!customEndDate) setCustomEndDate(new Date());
+              }
+            }}
+            style={{ marginHorizontal: 16 }}
+          />
+
+          {/* Custom Range Picker row beneath pills */}
+          {viewMode === "custom" && (
+            <View style={[styles.dateRangeContainer, { paddingTop: 4 }]}>
+              <TouchableOpacity
+                style={styles.dateRangeButton}
+                onPress={() => setShowStartCalendar(true)}
+              >
+                <Text style={styles.dateRangeLabel}>From:</Text>
+                <Text style={styles.dateRangeValue}>
+                  {customStartDate ? formatDateFull(customStartDate) : "Select Date"}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.dateRangeSeparator}>→</Text>
+              <TouchableOpacity
+                style={styles.dateRangeButton}
+                onPress={() => setShowEndCalendar(true)}
+              >
+                <Text style={styles.dateRangeLabel}>To:</Text>
+                <Text style={styles.dateRangeValue}>
+                  {customEndDate ? formatDateFull(customEndDate) : "Select Date"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Budget Alert Banner */}
           {renderBudgetAlert()}
-
-          {/* Enhanced Balance Card */}
-          <View style={styles.summaryCard}>
-            {/* Zone 1 — Net Balance */}
-            <Text style={styles.summaryTitle}>
-              {"NET BALANCE · " + getViewTitle().toUpperCase()}
-            </Text>
-            <View style={styles.balanceContainer}>
-              <Text style={styles.balanceAmount}>
-                {formatCurrency(todaySummary.balance)}
-              </Text>
-            </View>
-
-            {/* Zone 2 — Profit/Loss Status badge & Trend calculation */}
-            <View style={styles.plStatusContainer}>
-              <View style={[styles.plBadge, { backgroundColor: todaySummary.balance >= 0 ? "#EAF3DE" : "#FCEBEB" }]}>
-                <Text style={[styles.plBadgeText, { color: todaySummary.balance >= 0 ? "#27500A" : "#791F1F" }]}>
-                  {todaySummary.balance >= 0 ? "Profit" : "Loss"}
-                </Text>
-              </View>
-              <View style={[styles.pctChangeBadge, { backgroundColor: pctChange >= 0 ? "#EAF3DE" : "#FCEBEB" }]}>
-                <MaterialCommunityIcons
-                  name={pctChange >= 0 ? "trending-up" : "trending-down"}
-                  size={14}
-                  color={pctChange >= 0 ? "#27500A" : "#791F1F"}
-                />
-                <Text style={[styles.pctChangeText, { color: pctChange >= 0 ? "#27500A" : "#791F1F" }]}>
-                  {pctChange >= 0 ? "+" : ""}{pctChange.toFixed(1)}% vs prev.
-                </Text>
-              </View>
-            </View>
-
-            {/* Zone 3 — Income vs Expense Blocks */}
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <View style={styles.statHeaderRow}>
-                  <MaterialCommunityIcons name="arrow-down" size={16} color="#3B6D11" />
-                  <Text style={[styles.statLabel, { color: "#3B6D11" }]}>Income</Text>
-                </View>
-                <Text style={[styles.statValue, { color: "#3B6D11" }]}>
-                  {formatCurrency(todaySummary.totalIncome)}
-                </Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <View style={styles.statHeaderRow}>
-                  <MaterialCommunityIcons name="arrow-up" size={16} color="#A32D2D" />
-                  <Text style={[styles.statLabel, { color: "#A32D2D" }]}>Expense</Text>
-                </View>
-                <Text style={[styles.statValue, { color: "#A32D2D" }]}>
-                  {formatCurrency(todaySummary.totalExpense)}
-                </Text>
-              </View>
-            </View>
-
-            {/* Zone 4 — Budget Progress Bar */}
-            <View style={styles.progressBarSection}>
-              <View style={styles.progressBarLabelRow}>
-                <Text style={styles.progressBarLabel}>Period Usage</Text>
-                <Text style={[styles.progressBarValue, { color: getProgressBarColor(periodRatio) }]}>
-                  {periodRatio.toFixed(0)}%
-                </Text>
-              </View>
-              <View style={styles.progressBarBg}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    {
-                      width: `${Math.min(periodRatio, 100)}%`,
-                      backgroundColor: getProgressBarColor(periodRatio),
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
 
           {/* Quick Action Row */}
           <View style={styles.quickActionRow}>
@@ -796,21 +774,117 @@ export default function FinanceScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Inline Collapsible Composer Panel */}
+          {isModalVisible && (
+            <View style={[styles.inlinePanelCard, { backgroundColor: isIncome ? "#F9FBF9" : "#FBF9F9", borderColor: modalTheme.chipSelectedBorder, borderWidth: 1, marginHorizontal: 16, marginBottom: 20, borderRadius: 12, padding: 14 }]}>
+              {/* Header */}
+              <View style={[styles.panelHeaderRow, { borderBottomWidth: 0.5, borderBottomColor: COLOR_BORDER, paddingBottom: 10, marginBottom: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}>
+                <View style={[styles.panelHeaderLeft, { flexDirection: "row", alignItems: "center", gap: 6 }]}>
+                  <Text style={{ fontSize: 16 }}>{isIncome ? "💚" : "❤️"}</Text>
+                  <Text style={[styles.panelTitle, { fontSize: 14, fontWeight: "600", color: COLOR_DARK }]}>
+                    {editingTransaction ? "Edit" : "Add"} {isIncome ? "Income" : "Expense"}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsModalVisible(false)}>
+                  <Text style={{ color: COLOR_MUTED, fontSize: 13, fontWeight: "500" }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Amount & Date Input Row */}
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+                <View style={[styles.fieldContainer, { flex: 1.2 }]}>
+                  <Text style={styles.fieldLabel}>Amount (Rs.)</Text>
+                  <TextInput
+                    ref={amountInputRef}
+                    style={styles.fieldInput}
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="0.00"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[styles.fieldContainer, { flex: 0.8 }]}
+                  onPress={() => setShowTransactionCalendar(true)}
+                >
+                  <Text style={styles.fieldLabel}>Date</Text>
+                  <View style={styles.dateFieldRow}>
+                    <MaterialCommunityIcons name="calendar" size={14} color="#6B7280" />
+                    <Text style={styles.dateFieldText}>{formatDate(transactionDate)}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Category selector row */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.fieldLabel}>Category</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {(isIncome ? INCOME_CATEGORIES_WITH_ICONS : EXPENSE_CATEGORIES_WITH_ICONS).map((catObj) => {
+                    const cat = catObj.name;
+                    const iconKey = catObj.icon;
+                    const isActive = isIncome ? incomeCategory === cat : expenseCategory === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryChip,
+                          isActive && {
+                            borderColor: modalTheme.chipSelectedBorder,
+                            backgroundColor: modalTheme.chipSelectedBg,
+                          }
+                        ]}
+                        onPress={() => {
+                          if (isIncome) {
+                            setIncomeCategory(cat as IncomeCategoryType);
+                          } else {
+                            setExpenseCategory(cat as ExpenseCategoryType);
+                          }
+                        }}
+                      >
+                        {renderIcon(iconKey, isActive ? modalTheme.chipSelectedText : "#6B7280", 14)}
+                        <Text style={[styles.categoryChipText, isActive && { color: modalTheme.chipSelectedText, fontWeight: "600" }]}>
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Notes Input */}
+              <View style={[styles.fieldContainer, { marginBottom: 14 }]}>
+                <Text style={styles.fieldLabel}>Notes / Description</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Add description..."
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              {/* Save / Submit Button at the bottom */}
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: isIncome ? "#10B981" : "#EF4444" }]}
+                onPress={handleSaveTransaction}
+              >
+                <Text style={styles.submitButtonText}>
+                  {editingTransaction ? "Save Changes" : `Add ${isIncome ? "Income" : "Expense"}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Grouped Transaction List */}
           <View style={styles.transactionsSection}>
             <Text style={styles.sectionTitle}>Transactions</Text>
             {groupedTx.length === 0 ? (
-              <View style={styles.emptyTransactions}>
-                <View style={styles.emptyIconCircle}>
-                  <MaterialCommunityIcons name="chart-bar" size={32} color="#9CA3AF" />
-                </View>
-                <Text style={styles.emptyTransactionsText}>
-                  No transactions for this period.
-                </Text>
-                <Text style={styles.emptyTransactionsSubtext}>
-                  Tap Add Income/Expense to log transactions.
-                </Text>
-              </View>
+              <EmptyState
+                emoji="📊"
+                title="No transactions for this period"
+                subtitle="Tap Add Income/Expense to log transactions."
+              />
             ) : (
               groupedTx.map((group) => (
                 <View key={group.title} style={styles.sectionGroup}>
@@ -822,166 +896,7 @@ export default function FinanceScreen() {
           </View>
         </ScrollView>
 
-        {/* Add / Edit Modal */}
-        <Modal
-          visible={isModalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setIsModalVisible(false)}
-        >
-          <View style={[styles.modalContainer, { backgroundColor: isIncome ? "#F9FBF9" : "#FBF9F9" }]}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                <Text style={styles.modalCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>
-                {editingTransaction ? "Edit" : "Add"} {isIncome ? "Income" : "Expense"}
-              </Text>
-              <TouchableOpacity
-                style={[styles.modalHeaderSaveBtn, { backgroundColor: modalTheme.saveBtnBg }]}
-                onPress={handleSaveTransaction}
-              >
-                <Text style={[styles.modalHeaderSaveText, { color: modalTheme.saveBtnText }]}>
-                  {editingTransaction ? "Save" : "Add"}
-                </Text>
-              </TouchableOpacity>
-            </View>
 
-            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Income / Expense Toggle */}
-              <View style={styles.typeToggle}>
-                <TouchableOpacity
-                  style={[styles.typeButton, isIncome && styles.typeButtonIncomeActive]}
-                  onPress={() => {
-                    setTransactionType("income");
-                    setIncomeCategory("Salary");
-                    setAmount("");
-                  }}
-                >
-                  <Text style={[styles.typeButtonText, isIncome && styles.typeButtonTextActive]}>
-                    💚 Income
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.typeButton, !isIncome && styles.typeButtonExpenseActive]}
-                  onPress={() => {
-                    setTransactionType("expense");
-                    setExpenseCategory("Food");
-                    setAmount("");
-                  }}
-                >
-                  <Text style={[styles.typeButtonText, !isIncome && styles.typeButtonTextActive]}>
-                    ❤️ Expense
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Premium Amount Input Card */}
-              <TouchableOpacity
-                activeOpacity={0.9}
-                style={[
-                  styles.amountDisplayCard,
-                  { backgroundColor: modalTheme.amountCardBg, borderColor: modalTheme.accent },
-                ]}
-                onPress={() => amountInputRef.current?.focus()}
-              >
-                <View style={[styles.amountIconCircle, { backgroundColor: isIncome ? "#EEF6E8" : "#FDECEE" }]}>
-                  {renderIcon(
-                    getCategoryIconKey(isIncome ? incomeCategory : expenseCategory, transactionType),
-                    modalTheme.chipSelectedText,
-                    20
-                  )}
-                </View>
-                <View style={styles.amountDisplayRight}>
-                  <Text style={[styles.amountCatLabel, { color: modalTheme.chipSelectedText }]}>
-                    Rs. • {isIncome ? incomeCategory : expenseCategory}
-                  </Text>
-                  <View style={styles.amountInputRow}>
-                    <Text style={[styles.amountCurrencyLabel, { color: modalTheme.chipSelectedText }]}>
-                      Rs.
-                    </Text>
-                    <TextInput
-                      ref={amountInputRef}
-                      style={[styles.amountDisplayInput, { color: modalTheme.chipSelectedText }]}
-                      value={amount}
-                      onChangeText={setAmount}
-                      placeholder="0"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              {/* Icon Category Grid */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Category</Text>
-                <View style={styles.categoryGrid}>
-                  {(isIncome ? INCOME_CATEGORIES_WITH_ICONS : EXPENSE_CATEGORIES_WITH_ICONS).map((catObj) => {
-                    const cat = catObj.name;
-                    const iconKey = catObj.icon;
-                    const isActive = isIncome ? incomeCategory === cat : expenseCategory === cat;
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.categoryGridItem,
-                          isActive
-                            ? { borderColor: modalTheme.chipSelectedBorder, backgroundColor: modalTheme.chipSelectedBg }
-                            : { borderColor: COLOR_BORDER, backgroundColor: "#F9FAFB" },
-                        ]}
-                        onPress={() => {
-                          if (isIncome) {
-                            setIncomeCategory(cat as IncomeCategoryType);
-                          } else {
-                            setExpenseCategory(cat as ExpenseCategoryType);
-                          }
-                        }}
-                      >
-                        <View style={styles.categoryGridIconWrap}>
-                          {renderIcon(
-                            iconKey,
-                            isActive ? modalTheme.chipSelectedText : "#6B7280",
-                            18
-                          )}
-                        </View>
-                        <Text
-                          style={[
-                            styles.categoryGridText,
-                            isActive && { color: modalTheme.chipSelectedText, fontWeight: "500" },
-                          ]}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Date + Notes Row */}
-              <View style={styles.dateNotesRow}>
-                <TouchableOpacity
-                  style={styles.datePill}
-                  onPress={() => setShowTransactionCalendar(true)}
-                >
-                  <MaterialCommunityIcons name="calendar" size={16} color="#4B5563" />
-                  <Text style={styles.datePillText}>{formatDate(transactionDate)}</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.notesInline}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Add a note..."
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </ScrollView>
-          </View>
-        </Modal>
 
         {/* Transaction Date Calendar */}
         <Calendar
@@ -1021,57 +936,7 @@ export default function FinanceScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: COLOR_BLUE,
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  back: {
-    marginRight: 14,
-    padding: 4,
-  },
-  backTxt: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "500",
-  },
-  headerTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "500",
-  },
-  headerSub: {
-    color: "#EFF6FF",
-    fontSize: 12,
-    marginTop: 2,
-    fontWeight: "400",
-  },
-  headerStatsRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  headerStatChip: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  headerStatCount: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  headerStatLabel: {
-    color: "#EFF6FF",
-    fontSize: 10,
-    fontWeight: "400",
-  },
+
 
   // Segmented tab styles
   tabContainer: {
@@ -1163,91 +1028,77 @@ const styles = StyleSheet.create({
     color: COLOR_MUTED,
     fontWeight: "500",
   },
-  summaryCard: {
-    backgroundColor: COLOR_CARD,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    padding: 20,
-    borderRadius: 12,
+  headerCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 0.5,
-    borderColor: COLOR_BORDER,
+    borderColor: "#E5E7EB",
   },
-  summaryTitle: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#94A3B8",
-    letterSpacing: 1.0,
-    marginBottom: 8,
-  },
-  balanceContainer: {
-    alignItems: "flex-start",
-    marginBottom: 10,
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: "500",
-    color: COLOR_DARK,
-    letterSpacing: -0.5,
-  },
-  plStatusContainer: {
+  headerTopRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  plBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  greetingSection: {
+    flex: 1,
+  },
+  greetingTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6B7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  greetingSubtitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginTop: 4,
+  },
+  progressCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 4.5,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  progressPercentText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  progressSubtext: {
+    fontSize: 8,
+    color: "#6B7280",
+    textTransform: "uppercase",
+    fontWeight: "600",
+    marginTop: 1,
+  },
+  statChipsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  statChip: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  plBadgeText: {
-    fontSize: 12,
-    fontWeight: "500",
+  statChipCount: {
+    fontSize: 13,
+    fontWeight: "700",
   },
-  pctChangeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  pctChangeText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderTopWidth: 0.5,
-    borderTopColor: COLOR_BORDER,
-    paddingTop: 16,
-    marginBottom: 16,
-  },
-  statBox: {
-    flex: 1,
-  },
-  statHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 4,
-  },
-  statDivider: {
-    width: 0.5,
-    height: 36,
-    backgroundColor: COLOR_BORDER,
-    marginHorizontal: 16,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "500",
+  statChipLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   progressBarSection: {
     borderTopWidth: 0.5,
@@ -1451,178 +1302,87 @@ const styles = StyleSheet.create({
     color: "#EF4444",
   },
 
-  // Modal styling
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: COLOR_CARD,
-    borderBottomWidth: 0.5,
-    borderBottomColor: COLOR_BORDER,
-  },
-  modalCancel: {
-    fontSize: 15,
-    color: COLOR_MUTED,
-    fontWeight: "500",
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: COLOR_DARK,
-    textTransform: "capitalize",
-  },
-  modalHeaderSaveBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalHeaderSaveText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  typeToggle: {
-    flexDirection: "row",
-    backgroundColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 20,
-  },
-  typeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderRadius: 10,
-  },
-  typeButtonIncomeActive: {
-    backgroundColor: "#10B981",
-  },
-  typeButtonExpenseActive: {
-    backgroundColor: "#EF4444",
-  },
-  typeButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: COLOR_MUTED,
-  },
-  typeButtonTextActive: {
-    color: "white",
-  },
-  amountDisplayCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    padding: 16,
+  // Inline Panel and Composer styling
+  inlinePanelCard: {
     borderWidth: 0.5,
-    marginBottom: 20,
-    gap: 12,
+    borderRadius: 12,
+    overflow: "hidden",
   },
-  amountIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  amountDisplayRight: {
-    flex: 1,
-  },
-  amountCatLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginBottom: 2,
-  },
-  amountInputRow: {
+  panelHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
-  amountCurrencyLabel: {
-    fontSize: 22,
-    fontWeight: "500",
-    marginRight: 2,
-  },
-  amountDisplayInput: {
-    fontSize: 26,
-    fontWeight: "500",
-    flex: 1,
-    padding: 0,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: COLOR_DARK,
-    marginBottom: 10,
-  },
-  categoryGrid: {
+  panelHeaderLeft: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
     gap: 8,
   },
-  categoryGridItem: {
-    width: "23.2%",
-    aspectRatio: 1,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 4,
-  },
-  categoryGridIconWrap: {
-    marginBottom: 4,
-  },
-  categoryGridText: {
-    fontSize: 9,
-    color: COLOR_MUTED,
-    textAlign: "center",
-    fontWeight: "400",
-  },
-  dateNotesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 24,
-  },
-  datePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: COLOR_CARD,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: COLOR_BORDER,
-    minWidth: 130,
-  },
-  datePillText: {
-    fontSize: 13,
-    fontWeight: "500",
+  panelTitle: {
+    fontSize: 14,
+    fontWeight: "600",
     color: COLOR_DARK,
   },
-  notesInline: {
-    flex: 1,
-    backgroundColor: COLOR_CARD,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  fieldContainer: {
+    backgroundColor: "#F9FAFB",
     borderWidth: 0.5,
     borderColor: COLOR_BORDER,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flex: 1,
+  },
+  fieldLabel: {
+    fontSize: 10,
+    color: "#6B7280",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  fieldInput: {
     fontSize: 14,
     color: COLOR_DARK,
-    fontWeight: "400",
+    fontWeight: "500",
+    padding: 0,
+  },
+  dateFieldRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 20,
+  },
+  dateFieldText: {
+    fontSize: 13,
+    color: COLOR_DARK,
+    fontWeight: "500",
+  },
+  categoryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 0.5,
+    borderColor: COLOR_BORDER,
+    backgroundColor: "#F9FAFB",
+    gap: 6,
+  },
+  categoryChipText: {
+    fontSize: 12,
+    color: "#4B5563",
+    fontWeight: "500",
+  },
+  submitButton: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  submitButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

@@ -4,6 +4,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import familyService from "@/services/familyService";
 import { useAppStore } from "@/store/appStore";
 import { FamilyMember, RelationshipType } from "@/types";
@@ -105,10 +109,9 @@ export default function FamilyScreen() {
   });
 
   const loadFamilyMembers = async () => {
-    if (!profile) return;
     setLoading(true);
     try {
-      const data = await familyService.getFamilyMembers(profile.id);
+      const data = await familyService.getFamilyMembers(profile?.id || "");
       setMembers(data);
 
       // Filter list based on active tab
@@ -161,8 +164,6 @@ export default function FamilyScreen() {
 
   // Handle Quick Add from Composer
   const handleAddMember = async () => {
-    if (!profile) return;
-
     if (!composerName || !composerPhone || !composerDOB) {
       Alert.alert("Error", "Please fill in Name, Phone Number, and Date of Birth");
       return;
@@ -170,7 +171,7 @@ export default function FamilyScreen() {
 
     try {
       const memberData = {
-        profileID: profile.id,
+        profileID: profile?.id || "",
         fullName: composerName,
         relationship: composerRelation,
         dateOfBirth: composerDOB,
@@ -208,7 +209,7 @@ export default function FamilyScreen() {
 
   // Save member details from modal
   const saveMember = async () => {
-    if (!profile || !editingMember) return;
+    if (!editingMember) return;
 
     if (!formData.fullName || !formData.phoneNumber || !formData.dateOfBirth) {
       Alert.alert("Error", "Please enter name, phone number and date of birth fields");
@@ -363,8 +364,11 @@ export default function FamilyScreen() {
     else if (relationClass === "Extended Family") leftBarColor = "#F59E0B"; // Amber
 
     return (
-      <View key={member.id} style={styles.card}>
-        <View style={[styles.priorityBar, { backgroundColor: leftBarColor }]} />
+      <AppCard
+        key={member.id}
+        stripeColor={leftBarColor}
+        style={{ padding: 0, overflow: "hidden", marginBottom: 10 }}
+      >
         <View style={styles.cardMain}>
           <TouchableOpacity
             style={styles.cardHeader}
@@ -456,7 +460,7 @@ export default function FamilyScreen() {
             </View>
           )}
         </View>
-      </View>
+      </AppCard>
     );
   };
 
@@ -495,77 +499,35 @@ export default function FamilyScreen() {
             </View>
 
             <View style={styles.statChipsRow}>
-              <View style={[styles.statChip, styles.statChipDone]}>
-                <Text style={[styles.statChipCount, styles.doneChipText]}>
-                  {totalCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.doneChipText]}>
-                  Members
-                </Text>
-              </View>
-              <View style={[styles.statChip, styles.statChipPending]}>
-                <Text style={[styles.statChipCount, styles.pendingChipText]}>
-                  {remindersCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.pendingChipText]}>
-                  Reminders
-                </Text>
-              </View>
-              <View style={[styles.statChip, styles.statChipOverdue]}>
-                <Text style={[styles.statChipCount, styles.overdueChipText]}>
-                  {upcomingBirthdaysCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.overdueChipText]}>
-                  Bdays (30d)
-                </Text>
-              </View>
+              <StatChip
+                count={totalCount}
+                label="Members"
+                type="info"
+              />
+              <StatChip
+                count={remindersCount}
+                label="Reminders"
+                type="success"
+              />
+              <StatChip
+                count={upcomingBirthdaysCount}
+                label="Bdays (30d)"
+                type="warning"
+              />
             </View>
           </View>
 
           {/* 2. Segmented tab pills filter */}
-          <View style={styles.filterContainer}>
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "all" && styles.filterPillActive]}
-              onPress={() => setActiveTab("all")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "all" && styles.filterPillTextActive,
-                ]}
-              >
-                All
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "immediate" && styles.filterPillActive]}
-              onPress={() => setActiveTab("immediate")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "immediate" && styles.filterPillTextActive,
-                ]}
-              >
-                Immediate
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "extended" && styles.filterPillActive]}
-              onPress={() => setActiveTab("extended")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "extended" && styles.filterPillTextActive,
-                ]}
-              >
-                Extended
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedControl
+            tabs={[
+              { id: "all", label: "All" },
+              { id: "immediate", label: "Immediate" },
+              { id: "extended", label: "Extended" },
+            ]}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as TabType)}
+            style={{ marginHorizontal: 16, marginBottom: 12 }}
+          />
 
           {/* 3. Inline Composer Card */}
           <View style={styles.composerCard}>
@@ -632,17 +594,13 @@ export default function FamilyScreen() {
 
           {/* 4. Feed Sections */}
           {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2563EB" />
-            </View>
+            <LoadingState />
           ) : filteredMembers.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>👨‍👩‍👧‍👦</Text>
-              <Text style={styles.emptyText}>No family members found</Text>
-              <Text style={styles.emptySubtext}>
-                Use the composer above to add family members and customize tracking.
-              </Text>
-            </View>
+            <EmptyState
+              emoji="👨‍👩‍👧‍👦"
+              title="No family members found"
+              subtitle="Use the composer above to add family members and customize tracking."
+            />
           ) : (
             <View style={styles.feedContainer}>
               {groupedSections.map(g => renderGroupSection(g.title, g.data, g.bgColor, g.color))}

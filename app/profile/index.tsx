@@ -4,6 +4,7 @@
 // ============================================
 
 import Calendar from '@/components/ui/calendar';
+import { AppCard } from '@/components/ui/AppCard';
 import { Colors } from '@/constants/theme';
 import profileService from '@/services/profileService';
 import { useAppStore } from '@/store/appStore';
@@ -137,7 +138,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Profile Details */}
-        <View style={styles.detailsContainer}>
+        <AppCard style={styles.detailsContainer}>
           {/* Name */}
           <View style={styles.fieldRow}>
             <Text style={styles.label}>
@@ -266,7 +267,7 @@ export default function ProfileScreen() {
               <Text style={styles.value}>{profile?.address}</Text>
             )}
           </View>
-        </View>
+        </AppCard>
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>

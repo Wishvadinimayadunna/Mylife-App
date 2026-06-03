@@ -11,6 +11,10 @@ import { useAppStore } from "@/store/appStore";
 import { Stack, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { AppCard } from "@/components/ui/AppCard";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 
 
 type Tab = "home" | "timeline" | "calendar" | "cycle";
@@ -187,14 +191,13 @@ export default function HealthScreen() {
         <Text style={s.headerTitle}>Health Centre</Text>
       </View>
 
-      <View style={s.tabBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabScroll}>
-          {TABS.filter(t => !t.femaleOnly || isFemale).map(t => (
-            <TouchableOpacity key={t.id} style={[s.tab, tab === t.id && s.tabActive]} onPress={() => setTab(t.id)}>
-              <Text style={[s.tabTxt, tab === t.id && s.tabTxtActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 10 }}>
+        <SegmentedControl
+          tabs={TABS.filter(t => !t.femaleOnly || isFemale).map(t => ({ id: t.id, label: t.label }))}
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          style={{ marginHorizontal: 16 }}
+        />
       </View>
 
       <View style={{ flex: 1, backgroundColor: "#F5F7FA" }}>

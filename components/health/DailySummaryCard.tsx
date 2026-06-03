@@ -5,6 +5,7 @@
 
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { AppCard } from "../ui/AppCard";
 
 interface FeedEntry {
   id: string;
@@ -121,7 +122,7 @@ export function buildTodayFeed(
 
 export default function DailySummaryCard({ entries }: Props) {
   return (
-    <View style={s.card}>
+    <AppCard>
       <Text style={s.title}>Today's Activity</Text>
       {entries.length === 0 ? (
         <View style={s.empty}>
@@ -146,7 +147,7 @@ export default function DailySummaryCard({ entries }: Props) {
           </View>
         ))
       )}
-    </View>
+    </AppCard>
   );
 }
 
