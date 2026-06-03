@@ -5,6 +5,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import shoppingService from "@/services/shoppingService";
 import { useAppStore } from "@/store/appStore";
 import {
@@ -93,8 +97,7 @@ export default function ShoppingScreen() {
   }, [profile]);
 
   const loadShoppingItems = async () => {
-    if (!profile) return;
-    const data = await shoppingService.getShoppingItems(profile.id);
+    const data = await shoppingService.getShoppingItems(profile?.id || "");
     setItems(data);
   };
 
@@ -146,13 +149,13 @@ export default function ShoppingScreen() {
 
   // Submit bulk items to backend
   const handleBulkSubmit = async () => {
-    if (!profile || parsedBulkPreview.length === 0) return;
+    if (parsedBulkPreview.length === 0) return;
 
     try {
       const groupId = `bulk_${Date.now()}`;
       for (const item of parsedBulkPreview) {
         await shoppingService.addShoppingItem({
-          profileID: profile.id,
+          profileID: profile?.id || "",
           name: item.name,
           category: item.category,
           type: "urgent",
@@ -174,7 +177,6 @@ export default function ShoppingScreen() {
 
   // Submit single item add/edit to backend
   const handleSingleSubmit = async () => {
-    if (!profile) return;
     if (!formData.name.trim()) {
       Alert.alert("Error", "Please enter item name");
       return;
@@ -193,7 +195,7 @@ export default function ShoppingScreen() {
         Alert.alert("Success", "Item updated successfully!");
       } else {
         await shoppingService.addShoppingItem({
-          profileID: profile.id,
+          profileID: profile?.id || "",
           name: formData.name,
           category: formData.category,
           type: formData.type,
@@ -376,15 +378,15 @@ export default function ShoppingScreen() {
   // Render standard single card row
   const renderItemCard = (item: ShoppingItem, isInsideFolder = false) => {
     const isExpanded = !!expandedItems[item.id];
-    const borderLeftColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+    const stripeColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
     const prioColor = PRIORITY_COLORS[item.priority || "Medium"];
 
     return (
-      <View
+      <AppCard
         key={item.id}
+        stripeColor={stripeColor}
         style={[
-          styles.itemCard,
-          { borderLeftColor },
+          { paddingVertical: 12, paddingHorizontal: 16, marginBottom: 8 },
           item.isBought && styles.itemCardBought,
           isInsideFolder && styles.nestedFolderItem,
         ]}
@@ -442,7 +444,7 @@ export default function ShoppingScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </AppCard>
     );
   };
 
@@ -451,11 +453,11 @@ export default function ShoppingScreen() {
     const filteredUnboughtItems = getUnboughtFilteredItems();
     if (filteredUnboughtItems.length === 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>🛒</Text>
-          <Text style={styles.emptyText}>No items found</Text>
-          <Text style={styles.emptySubtext}>Expand the panels above to add items to your list</Text>
-        </View>
+        <EmptyState
+          emoji="🛒"
+          title="No items found"
+          subtitle="Expand the panels above to add items to your list"
+        />
       );
     }
 
@@ -544,11 +546,11 @@ export default function ShoppingScreen() {
 
     if (historyItems.length === 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>🕰️</Text>
-          <Text style={styles.emptyText}>Empty history</Text>
-          <Text style={styles.emptySubtext}>Purchased items will stack here</Text>
-        </View>
+        <EmptyState
+          emoji="🕰️"
+          title="Empty history"
+          subtitle="Purchased items will stack here"
+        />
       );
     }
 
@@ -558,9 +560,12 @@ export default function ShoppingScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listScrollContent}
         renderItem={({ item }) => {
-          const borderLeftColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+          const stripeColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
           return (
-            <View style={[styles.itemCard, { borderLeftColor }, styles.itemCardBought]}>
+            <AppCard
+              stripeColor={stripeColor}
+              style={[{ paddingVertical: 12, paddingHorizontal: 16, marginBottom: 8 }, styles.itemCardBought]}
+            >
               <View style={styles.itemCardRow}>
                 {/* Checked circle */}
                 <TouchableOpacity
@@ -587,7 +592,7 @@ export default function ShoppingScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </AppCard>
           );
         }}
       />
@@ -600,29 +605,33 @@ export default function ShoppingScreen() {
 
       {/* PREMIUM SOLID BLUE HEADER */}
       <View style={styles.screenHeader}>
-        <TouchableOpacity
-          style={styles.backArrowButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backArrowText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>Shopping</Text>
-          <Text style={styles.headerSubtitleText}>
-            {items.filter((item) => !item.isBought).length} items pending
-          </Text>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity
+            style={styles.backArrowButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backArrowText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitleText}>Shopping</Text>
+            <Text style={styles.headerSubtitleText}>
+              {items.filter((item) => !item.isBought).length} items pending
+            </Text>
+          </View>
         </View>
         
         {/* Header Stats Chips Row */}
         <View style={styles.headerStatsRow}>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{stats.urgentCount}</Text>
-            <Text style={styles.headerStatLabel}>Urgent</Text>
-          </View>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{stats.monthlyCount}</Text>
-            <Text style={styles.headerStatLabel}>Monthly</Text>
-          </View>
+          <StatChip
+            count={stats.urgentCount}
+            label="Urgent"
+            type="danger"
+          />
+          <StatChip
+            count={stats.monthlyCount}
+            label="Monthly"
+            type="info"
+          />
         </View>
       </View>
 
@@ -886,24 +895,17 @@ export default function ShoppingScreen() {
         </View>
 
         {/* Segmented Filter Bar Selector */}
-        <View style={styles.filterBarContainer}>
-          <View style={styles.filterContainer}>
-            {["all", "urgent", "monthly", "history"].map((type) => {
-              const isActive = filterType === type;
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.filterPill, isActive && styles.filterPillActive]}
-                  onPress={() => setFilterType(type as any)}
-                >
-                  <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
+        <SegmentedControl
+          tabs={[
+            { id: "all", label: "All" },
+            { id: "urgent", label: "Urgent" },
+            { id: "monthly", label: "Monthly" },
+            { id: "history", label: "History" },
+          ]}
+          activeTab={filterType}
+          onChange={(id) => setFilterType(id as any)}
+          style={{ marginHorizontal: 16, marginBottom: 12 }}
+        />
 
         {/* List Stacks content */}
         <View style={{ flex: 1 }}>
@@ -935,8 +937,13 @@ const styles = StyleSheet.create({
   screenHeader: {
     backgroundColor: COLOR_BLUE,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 16,
     paddingHorizontal: 20,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
+  },
+  headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
   },

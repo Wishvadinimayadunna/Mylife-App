@@ -4,6 +4,7 @@
 
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { AppCard } from "../ui/AppCard";
 
 const PINK = "#DB2777";
 
@@ -14,13 +15,13 @@ interface Props {
 export default function CycleInsightsCard({ periods }: Props) {
   if (periods.length === 0) {
     return (
-      <View style={s.card}>
+      <AppCard stripeColor={PINK}>
         <Text style={s.title}>🌸 Cycle Insights</Text>
         <View style={s.emptyBox}>
           <Text style={s.emptyEmoji}>🌸</Text>
           <Text style={s.emptyTxt}>Log your first period to see insights</Text>
         </View>
-      </View>
+      </AppCard>
     );
   }
 
@@ -94,7 +95,7 @@ export default function CycleInsightsCard({ periods }: Props) {
   ];
 
   return (
-    <View style={s.card}>
+    <AppCard stripeColor={PINK}>
       <Text style={s.title}>🌸 Cycle Insights</Text>
       <View style={s.row}>
         {stats.map((stat) => (
@@ -107,7 +108,7 @@ export default function CycleInsightsCard({ periods }: Props) {
           </View>
         ))}
       </View>
-    </View>
+    </AppCard>
   );
 }
 

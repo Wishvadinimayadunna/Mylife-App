@@ -4,6 +4,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import utilityService from "@/services/utilityService";
 import { UtilityBill, UtilityType } from "@/types";
 import {
@@ -476,107 +480,102 @@ export default function UtilityScreen() {
     }
 
     return (
-      <View
+      <AppCard
         key={bill.id}
-        style={[
-          styles.card,
-          bill.isPaid && styles.completedCardOpacity,
-        ]}
+        stripeColor={priorityColor}
+        style={bill.isPaid ? styles.completedCardOpacity : undefined}
       >
-        <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
-        <View style={styles.cardMain}>
+        <TouchableOpacity
+          style={styles.cardHeader}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setExpandedBillId(isExpanded ? null : bill.id);
+          }}
+          activeOpacity={0.7}
+        >
+          {/* Checkbox button */}
           <TouchableOpacity
-            style={styles.cardHeader}
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setExpandedBillId(isExpanded ? null : bill.id);
-            }}
+            style={styles.checkbox}
+            onPress={() => togglePayment(bill)}
             activeOpacity={0.7}
           >
-            {/* Checkbox button */}
-            <TouchableOpacity
-              style={styles.checkbox}
-              onPress={() => togglePayment(bill)}
-              activeOpacity={0.7}
-            >
-              <MaterialCommunityIcons
-                name={bill.isPaid ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
-                size={22}
-                color={bill.isPaid ? "#10B981" : "#9CA3AF"}
-              />
-            </TouchableOpacity>
-
-            {/* Bill Info */}
-            <View style={styles.taskInfo}>
-              <Text style={[styles.taskTitle, bill.isPaid && styles.taskTitleCompleted]}>
-                {bill.name}
-              </Text>
-              
-              {/* Meta Row */}
-              <View style={styles.taskMeta}>
-                <View style={styles.metaRow}>
-                  <Text style={styles.categoryIconText}>
-                    {BILL_TYPE_ICONS[bill.type] || "💰"}
-                  </Text>
-                  <Text style={styles.metaLabelText}>{bill.type}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabelText}>
-                    Rs. {bill.amount.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <MaterialCommunityIcons name="calendar" size={12} color="#6B7280" />
-                  <Text style={[styles.metaLabelText, overdue && styles.overdueDateText]}>
-                    {new Date(bill.dueDate).toLocaleDateString()}
-                    {overdue && " (Overdue)"}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Chevron toggle */}
-            <View style={styles.chevron}>
-              <MaterialCommunityIcons
-                name={isExpanded ? "chevron-up" : "chevron-down"}
-                size={20}
-                color="#6B7280"
-              />
-            </View>
+            <MaterialCommunityIcons
+              name={bill.isPaid ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+              size={22}
+              color={bill.isPaid ? "#10B981" : "#9CA3AF"}
+            />
           </TouchableOpacity>
 
-          {/* Accordion Body */}
-          {isExpanded && (
-            <View style={styles.cardBody}>
-              {/* Extra Details */}
-              <Text style={styles.descriptionText}>
-                • Recurring: {bill.isRecurring ? `Yes (Day ${bill.dueDay} of month)` : "No"}{"\n"}
-                • Reminder: {bill.reminderEnabled ? `Enabled at ${bill.reminderTime || "09:00"}` : "Disabled"}{"\n"}
-                • Sharing: {bill.isShared ? "Shared with Family" : "Personal Bill"}
-              </Text>
-
-              {/* Action buttons */}
-              <View style={styles.cardActionsContainer}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.editActionBtn]}
-                  onPress={() => openEditModal(bill)}
-                >
-                  <MaterialCommunityIcons name="pencil" size={14} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Edit</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.deleteActionBtn]}
-                  onPress={() => deleteBill(bill)}
-                >
-                  <MaterialCommunityIcons name="trash-can" size={14} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Delete</Text>
-                </TouchableOpacity>
+          {/* Bill Info */}
+          <View style={styles.taskInfo}>
+            <Text style={[styles.taskTitle, bill.isPaid && styles.taskTitleCompleted]}>
+              {bill.name}
+            </Text>
+            
+            {/* Meta Row */}
+            <View style={styles.taskMeta}>
+              <View style={styles.metaRow}>
+                <Text style={styles.categoryIconText}>
+                  {BILL_TYPE_ICONS[bill.type] || "💰"}
+                </Text>
+                <Text style={styles.metaLabelText}>{bill.type}</Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabelText}>
+                  Rs. {bill.amount.toFixed(2)}
+                </Text>
+              </View>
+              <View style={styles.metaRow}>
+                <MaterialCommunityIcons name="calendar" size={12} color="#6B7280" />
+                <Text style={[styles.metaLabelText, overdue && styles.overdueDateText]}>
+                  {new Date(bill.dueDate).toLocaleDateString()}
+                  {overdue && " (Overdue)"}
+                </Text>
               </View>
             </View>
-          )}
-        </View>
-      </View>
+          </View>
+
+          {/* Chevron toggle */}
+          <View style={styles.chevron}>
+            <MaterialCommunityIcons
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#6B7280"
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Accordion Body */}
+        {isExpanded && (
+          <View style={styles.cardBody}>
+            {/* Extra Details */}
+            <Text style={styles.descriptionText}>
+              • Recurring: {bill.isRecurring ? `Yes (Day ${bill.dueDay} of month)` : "No"}{"\n"}
+              • Reminder: {bill.reminderEnabled ? `Enabled at ${bill.reminderTime || "09:00"}` : "Disabled"}{"\n"}
+              • Sharing: {bill.isShared ? "Shared with Family" : "Personal Bill"}
+            </Text>
+
+            {/* Action buttons */}
+            <View style={styles.cardActionsContainer}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.editActionBtn]}
+                onPress={() => openEditModal(bill)}
+              >
+                <MaterialCommunityIcons name="pencil" size={14} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.deleteActionBtn]}
+                onPress={() => deleteBill(bill)}
+              >
+                <MaterialCommunityIcons name="trash-can" size={14} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </AppCard>
     );
   };
 
@@ -590,94 +589,51 @@ export default function UtilityScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* 1. Header productivity/stats card */}
-          <View style={styles.headerCard}>
+          <View style={[styles.headerCard, { backgroundColor: "#2563EB", borderColor: "#2563EB", borderRadius: 16 }]}>
             <View style={styles.headerTopRow}>
               <View style={styles.greetingSection}>
-                <Text style={styles.greetingTitle}>Utility Bills</Text>
-                <Text style={styles.greetingSubtitle}>
+                <Text style={[styles.greetingTitle, { color: "#93C5FD" }]}>Utility Bills</Text>
+                <Text style={[styles.greetingSubtitle, { color: "#FFFFFF", fontSize: 13, fontWeight: "500", marginTop: 4 }]}>
                   Track, schedule, and settle your recurring expenses
                 </Text>
               </View>
-              <View style={styles.progressCircle}>
-                <Text style={styles.progressPercentText}>
+              <View style={[styles.progressCircle, { borderColor: "#60A5FA", backgroundColor: "rgba(255,255,255,0.1)" }]}>
+                <Text style={[styles.progressPercentText, { color: "#FFFFFF" }]}>
                   {Math.round(completionRate)}%
                 </Text>
-                <Text style={styles.progressSubtext}>Paid</Text>
+                <Text style={[styles.progressSubtext, { color: "#93C5FD" }]}>Paid</Text>
               </View>
             </View>
 
             <View style={styles.statChipsRow}>
-              <View style={[styles.statChip, styles.statChipOverdue]}>
-                <Text style={[styles.statChipCount, styles.overdueChipText]}>
-                  {overdueCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.overdueChipText]}>
-                  Overdue
-                </Text>
-              </View>
-              <View style={[styles.statChip, styles.statChipPending]}>
-                <Text style={[styles.statChipCount, styles.pendingChipText]}>
-                  {unpaidCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.pendingChipText]}>
-                  Unpaid
-                </Text>
-              </View>
-              <View style={[styles.statChip, styles.statChipDone]}>
-                <Text style={[styles.statChipCount, styles.doneChipText]}>
-                  {paidCount}
-                </Text>
-                <Text style={[styles.statChipLabel, styles.doneChipText]}>
-                  Settled
-                </Text>
-              </View>
+              <StatChip
+                count={overdueCount}
+                label="Overdue"
+                type="danger"
+              />
+              <StatChip
+                count={unpaidCount}
+                label="Unpaid"
+                type="warning"
+              />
+              <StatChip
+                count={paidCount}
+                label="Settled"
+                type="success"
+              />
             </View>
           </View>
 
           {/* 2. Segmented Pill Filter */}
-          <View style={styles.filterContainer}>
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "unpaid" && styles.filterPillActive]}
-              onPress={() => setActiveTab("unpaid")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "unpaid" && styles.filterPillTextActive,
-                ]}
-              >
-                Unpaid
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "paid" && styles.filterPillActive]}
-              onPress={() => setActiveTab("paid")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "paid" && styles.filterPillTextActive,
-                ]}
-              >
-                Paid
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.filterPill, activeTab === "all" && styles.filterPillActive]}
-              onPress={() => setActiveTab("all")}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeTab === "all" && styles.filterPillTextActive,
-                ]}
-              >
-                All Bills
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedControl
+            tabs={[
+              { id: "unpaid", label: "Unpaid" },
+              { id: "paid", label: "Paid" },
+              { id: "all", label: "All Bills" },
+            ]}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as TabType)}
+          />
 
           {/* 3. Inline Composer Card */}
           <View style={styles.composerCard}>
@@ -732,17 +688,13 @@ export default function UtilityScreen() {
 
           {/* 4. Scrollable Feed */}
           {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2563EB" />
-            </View>
+            <LoadingState />
           ) : bills.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>💡</Text>
-              <Text style={styles.emptyText}>No bills found</Text>
-              <Text style={styles.emptySubtext}>
-                Use the quick add composer above to create a bill payment request.
-              </Text>
-            </View>
+            <EmptyState
+              emoji="💡"
+              title="No bills found"
+              subtitle="Use the quick add composer above to create a bill payment request."
+            />
           ) : (
             <View style={styles.feedContainer}>
               {groupedSections.map(g => renderGroupSection(g.title, g.data, g.bgColor, g.color))}

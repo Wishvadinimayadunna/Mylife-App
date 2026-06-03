@@ -5,6 +5,19 @@
 import { FinanceSummary, FinanceTransaction, MonthlyFinanceSummary } from '@/types';
 import apiClient from "@/utils/api";
 
+// Normalize MongoDB _id → id for the frontend type
+const normalize = (tx: any): FinanceTransaction => ({
+  id: tx._id ?? tx.id,
+  profileID: tx.profileID ?? '',
+  type: tx.type,
+  amount: tx.amount,
+  category: tx.category,
+  date: tx.date,
+  notes: tx.notes,
+  createdAt: tx.createdAt,
+  updatedAt: tx.updatedAt,
+});
+
 class FinanceService {
   // ============================================
   // GET ALL TRANSACTIONS
@@ -12,7 +25,7 @@ class FinanceService {
   async getTransactions(profileID: string): Promise<FinanceTransaction[]> {
     try {
       const response = await apiClient.get("/finance");
-      return response.data;
+      return (response.data as any[]).map(normalize);
     } catch (error) {
       console.error('Error getting transactions:', error);
       return [];
@@ -27,7 +40,7 @@ class FinanceService {
   ): Promise<FinanceTransaction> {
     try {
       const response = await apiClient.post("/finance", transactionData);
-      return response.data;
+      return normalize(response.data);
     } catch (error) {
       console.error('Error adding transaction:', error);
       throw error;
@@ -43,7 +56,7 @@ class FinanceService {
   ): Promise<FinanceTransaction> {
     try {
       const response = await apiClient.put(`/finance/${id}`, data);
-      return response.data;
+      return normalize(response.data);
     } catch (error) {
       console.error('Error updating transaction:', error);
       throw error;
@@ -53,13 +66,12 @@ class FinanceService {
   // ============================================
   // DELETE TRANSACTION
   // ============================================
-  async deleteTransaction(transactionId: string): Promise<boolean> {
+  async deleteTransaction(transactionId: string): Promise<void> {
     try {
       await apiClient.delete(`/finance/${transactionId}`);
-      return true;
     } catch (error) {
       console.error('Error deleting transaction:', error);
-      return false;
+      throw error;
     }
   }
 
@@ -130,7 +142,7 @@ class FinanceService {
   async getRecentTransactions(profileID: string, limit: number = 10): Promise<FinanceTransaction[]> {
     try {
       const response = await apiClient.get(`/finance/recent/${limit}`);
-      return response.data;
+      return (response.data as any[]).map(normalize);
     } catch (error) {
       console.error('Error getting recent transactions:', error);
       return [];
@@ -152,7 +164,7 @@ class FinanceService {
           endDate: endDate.toISOString(),
         },
       });
-      return response.data;
+      return (response.data as any[]).map(normalize);
     } catch (error) {
       console.error('Error getting transactions by date range:', error);
       return [];

@@ -5,6 +5,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import futureEventService from "@/services/futureEventService";
 import { useAppStore } from "@/store/appStore";
 import { EventType, FutureEvent, ReminderOption } from "@/types";
@@ -46,13 +50,13 @@ const REMINDER_OPTIONS: { value: ReminderOption; label: string }[] = [
 
 
 const TRIGGER_KEYWORDS: Record<EventType, string[]> = {
-  Birthday: ["birthday", "birth day", "bday", "b-day"],
-  Anniversary: ["anniversary", "wedding anniversary"],
-  Wedding: ["wedding", "marriage", "matrimony"],
-  Party: ["party", "celebration", "gathering", "dinner", "lunch", "get-together"],
-  Vacation: ["vacation", "trip", "flight", "travel", "holiday", "tour"],
-  Interview: ["interview", "job talk", "assessment"],
-  Meeting: ["meeting", "sync", "standup", "discussion", "call", "appointment"],
+  Birthday: ["birthday", "birth day", "bday", "b-day", "birthday party", "birth anniversary"],
+  Anniversary: ["anniversary", "wedding anniversary", "engagement anniversary", "jubilee"],
+  Wedding: ["wedding", "marriage", "matrimony", "engagement", "nuptials", "marriage ceremony"],
+  Party: ["party", "celebration", "gathering", "dinner", "lunch", "get-together", "get together", "feast", "bash", "reception"],
+  Vacation: ["vacation", "trip", "flight", "travel", "holiday", "tour", "getaway", "journey"],
+  Interview: ["interview", "job interview", "assessment", "technical interview", "screening", "audition"],
+  Meeting: ["meeting", "sync", "standup", "discussion", "call", "appointment", "review meeting", "project meeting", "conference", "briefing", "sync-up", "one-on-one"],
   Other: [],
 };
 
@@ -93,6 +97,11 @@ interface VoicePreview {
   time: string;
   location: string;
   isRecurringYearly: boolean;
+  isDateSpecified: boolean;
+  isTimeSpecified: boolean;
+  isLocationSpecified: boolean;
+  confidenceScore: number;
+  confidenceLevel: "High" | "Medium" | "Needs Review";
 }
 
 export default function FutureEventScreen() {
@@ -129,6 +138,10 @@ export default function FutureEventScreen() {
   // Voice template state
   const [voiceInputText, setVoiceInputText] = useState("");
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
+
+  // Target selections for modals (composer vs voice preview)
+  const [calendarTarget, setCalendarTarget] = useState<"composer" | "voice" | null>(null);
+  const [timePickerTarget, setTimePickerTarget] = useState<"composer" | "voice" | null>(null);
 
   // Real voice recognition state (Option B)
   const [isListening, setIsListening] = useState(false);
@@ -223,7 +236,7 @@ export default function FutureEventScreen() {
       if (SpeechRecognition) {
         const rec = new SpeechRecognition();
         rec.continuous = false;
-        rec.interimResults = false;
+        rec.interimResults = true;
         rec.lang = "en-US";
         
         rec.onstart = () => {
@@ -242,10 +255,16 @@ export default function FutureEventScreen() {
         };
         
         rec.onresult = (e: any) => {
-          const txt = e.results[0][0].transcript;
-          setVoiceInputText(txt);
-          const parsed = parseNaturalLanguageEvent(txt);
-          setVoicePreview(parsed);
+          let segments = [];
+          for (let i = 0; i < e.results.length; i++) {
+            segments.push(e.results[i][0].transcript.trim());
+          }
+          const fullTranscript = segments.filter(Boolean).join(" ");
+          setVoiceInputText(fullTranscript);
+          if (fullTranscript.trim()) {
+            const parsed = parseNaturalLanguageEvent(fullTranscript);
+            setVoicePreview(parsed);
+          }
         };
         
         setWebRecognitionInstance(rec);
@@ -266,86 +285,212 @@ export default function FutureEventScreen() {
     }
   };
 
-  // Natural Language Parsers
-  const parseNaturalLanguageEvent = (text: string): VoicePreview => {
-    const lower = text.toLowerCase().trim();
-    let type: EventType = "Other";
-    let title = "New Event";
-    let date = new Date();
-    let time = "10:00 AM";
-    let location = "";
-    let isRecurringYearly = false;
+  // ============================================
+  // Enhanced Natural Language Parsers
+  // ============================================
 
-    // Detect type using trigger keywords
-    for (const key of Object.keys(TRIGGER_KEYWORDS) as EventType[]) {
-      const words = TRIGGER_KEYWORDS[key];
-      if (words.some((word) => lower.includes(word))) {
-        type = key;
-        break;
+  const parseNaturalTime = (text: string): { time: string; isSpecified: boolean } => {
+    const lower = text.toLowerCase().trim();
+    
+    if (lower.includes("noon")) {
+      return { time: "12:00 PM", isSpecified: true };
+    }
+    if (lower.includes("midnight")) {
+      return { time: "12:00 AM", isSpecified: true };
+    }
+    if (lower.includes("morning")) {
+      return { time: "09:00 AM", isSpecified: true };
+    }
+    if (lower.includes("afternoon")) {
+      return { time: "02:00 PM", isSpecified: true };
+    }
+    if (lower.includes("evening")) {
+      return { time: "06:00 PM", isSpecified: true };
+    }
+    if (lower.includes("night")) {
+      return { time: "08:00 PM", isSpecified: true };
+    }
+
+    const regexFull = /(\d{1,2})[:.](\d{2})\s*(am|pm)/i;
+    const matchFull = text.match(regexFull);
+    if (matchFull) {
+      const hr = matchFull[1];
+      const min = matchFull[2];
+      const ampm = matchFull[3].toUpperCase();
+      return { time: `${hr}:${min} ${ampm}`, isSpecified: true };
+    }
+
+    const regexHourOnly = /(\d{1,2})\s*(am|pm)/i;
+    const matchHour = text.match(regexHourOnly);
+    if (matchHour) {
+      const hr = matchHour[1];
+      const ampm = matchHour[2].toUpperCase();
+      return { time: `${hr}:00 ${ampm}`, isSpecified: true };
+    }
+
+    return { time: "", isSpecified: false };
+  };
+
+  const parseNaturalLocation = (text: string): { location: string; isSpecified: boolean } => {
+    // Non-greedy match that terminates before another preposition or date/time keyword
+    const locationMatchesAll = [...text.matchAll(/\b(at|in|near|to)\s+([a-zA-Z0-9\s'&]+?)(?=\b(at|in|on|near|to|for|with|today|tomorrow|next|this)\b|$)/gi)];
+    
+    for (const match of locationMatchesAll) {
+      const prep = match[1].toLowerCase();
+      const candidate = match[2].trim();
+      const lowerCandidate = candidate.toLowerCase();
+      
+      const isTimeOrDate = 
+        /^\d{1,2}/.test(lowerCandidate) ||
+        lowerCandidate.includes("am") || 
+        lowerCandidate.includes("pm") ||
+        lowerCandidate.includes("today") || 
+        lowerCandidate.includes("tomorrow") ||
+        lowerCandidate.includes("yesterday") ||
+        lowerCandidate.includes("monday") || 
+        lowerCandidate.includes("tuesday") || 
+        lowerCandidate.includes("wednesday") || 
+        lowerCandidate.includes("thursday") || 
+        lowerCandidate.includes("friday") || 
+        lowerCandidate.includes("saturday") || 
+        lowerCandidate.includes("sunday") ||
+        lowerCandidate.includes("january") || 
+        lowerCandidate.includes("february") || 
+        lowerCandidate.includes("march") || 
+        lowerCandidate.includes("april") || 
+        lowerCandidate.includes("may") || 
+        lowerCandidate.includes("june") || 
+        lowerCandidate.includes("july") || 
+        lowerCandidate.includes("august") || 
+        lowerCandidate.includes("september") || 
+        lowerCandidate.includes("october") || 
+        lowerCandidate.includes("november") || 
+        lowerCandidate.includes("december") ||
+        lowerCandidate.includes("jan") || 
+        lowerCandidate.includes("feb") || 
+        lowerCandidate.includes("mar") || 
+        lowerCandidate.includes("apr") || 
+        lowerCandidate.includes("jun") || 
+        lowerCandidate.includes("jul") || 
+        lowerCandidate.includes("aug") || 
+        lowerCandidate.includes("sep") || 
+        lowerCandidate.includes("oct") || 
+        lowerCandidate.includes("nov") || 
+        lowerCandidate.includes("dec") ||
+        lowerCandidate.includes("next") ||
+        lowerCandidate.includes("this") ||
+        lowerCandidate === "noon" ||
+        lowerCandidate === "midnight" ||
+        lowerCandidate === "morning" ||
+        lowerCandidate === "afternoon" ||
+        lowerCandidate === "evening" ||
+        lowerCandidate === "night";
+
+      if (isTimeOrDate) continue;
+
+      if (prep === "to") {
+        const verbBlacklist = [
+          "meet", "discuss", "sync", "celebrate", "visit", "get", "have", "do", "be", 
+          "my", "your", "his", "her", "our", "their", "a", "an", "the", "see", "party", 
+          "buy", "shop", "eat", "drink", "talk", "go", "work", "play", "share"
+        ];
+        const firstWord = lowerCandidate.split(/\s+/)[0];
+        if (verbBlacklist.includes(firstWord)) {
+          continue;
+        }
+      }
+
+      let cleanedLoc = candidate;
+      cleanedLoc = cleanedLoc.replace(/\b(on|at|in|near|to|today|tomorrow|next|this)\b.*$/i, "");
+      const location = cleanedLoc.trim();
+      if (location) {
+        return { location, isSpecified: true };
+      }
+    }
+    
+    return { location: "", isSpecified: false };
+  };
+
+  const parseNaturalDateWithSpec = (text: string): { date: Date; isSpecified: boolean } => {
+    const str = text.toLowerCase().trim();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (str.includes("day after tomorrow")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 2);
+      return { date: d, isSpecified: true };
+    }
+    if (str.includes("tomorrow")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 1);
+      return { date: d, isSpecified: true };
+    }
+    if (str.includes("today")) {
+      return { date: new Date(today), isSpecified: true };
+    }
+    if (str.includes("next week")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 7);
+      return { date: d, isSpecified: true };
+    }
+    if (str.includes("next month")) {
+      const d = new Date(today);
+      d.setMonth(today.getMonth() + 1);
+      return { date: d, isSpecified: true };
+    }
+    if (str.includes("next year")) {
+      const d = new Date(today);
+      d.setFullYear(today.getFullYear() + 1);
+      return { date: d, isSpecified: true };
+    }
+
+    const weekdayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    for (let i = 0; i < 7; i++) {
+      const dayName = weekdayNames[i];
+      if (str.includes(dayName)) {
+        const isNext = str.includes(`next ${dayName}`);
+        const isThis = str.includes(`this ${dayName}`);
+        
+        const currentDayOfWeek = today.getDay();
+        const targetDayOfWeek = i;
+        
+        let daysToAdd = 0;
+        const diff = targetDayOfWeek - currentDayOfWeek;
+        
+        if (isNext) {
+          daysToAdd = diff + 7;
+          if (diff < 0) {
+            let upcomingDiff = targetDayOfWeek - currentDayOfWeek;
+            if (upcomingDiff <= 0) {
+              upcomingDiff += 7;
+            }
+            daysToAdd = upcomingDiff + 7;
+          } else {
+            daysToAdd = diff + 7;
+          }
+        } else if (isThis) {
+          let upcomingDiff = targetDayOfWeek - currentDayOfWeek;
+          if (upcomingDiff <= 0) {
+            upcomingDiff += 7;
+          }
+          daysToAdd = upcomingDiff;
+        } else {
+          let upcomingDiff = targetDayOfWeek - currentDayOfWeek;
+          if (upcomingDiff <= 0) {
+            upcomingDiff += 7;
+          }
+          daysToAdd = upcomingDiff;
+        }
+        
+        const d = new Date(today);
+        d.setDate(today.getDate() + daysToAdd);
+        return { date: d, isSpecified: true };
       }
     }
 
-    // Detect Location "in [location]"
-    const inMatch = text.match(/\bin\s+([^,.]+)/i);
-    if (inMatch) {
-      location = inMatch[1].trim();
-    }
-
-    // Parse Date
-    date = parseNaturalDate(text);
-
-    // Detect Time (e.g., "at 3 pm", "at 10:00 AM", "6pm")
-    const timeMatch = text.match(/(\d{1,2}(:\d{2})?\s*(am|pm|AM|PM))/i) || text.match(/(\d{1,2}\s*(am|pm|AM|PM))/i);
-    if (timeMatch) {
-      time = timeMatch[0].toUpperCase();
-    }
-
-    // Extract Title
-    let titleCandidate = text;
-    titleCandidate = titleCandidate.replace(/i\s+have\s+a\s+/i, "");
-    titleCandidate = titleCandidate.replace(/i\s+have\s+an\s+/i, "");
-    titleCandidate = titleCandidate.replace(/it's\s+/i, "");
-    
-    // Remove date/time/location suffix
-    titleCandidate = titleCandidate.replace(/\bon\s+.*$/i, "");
-    titleCandidate = titleCandidate.replace(/\bat\s+.*$/i, "");
-    titleCandidate = titleCandidate.replace(/\bin\s+.*$/i, "");
-    titleCandidate = titleCandidate.replace(/\btomorrow.*$/i, "");
-    titleCandidate = titleCandidate.replace(/\btoday.*$/i, "");
-    
-    const trimmed = titleCandidate.trim();
-    title = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : (type === "Other" ? "Event" : `${type} Event`);
-
-    // Set Yearly Recurrence for birthday/anniversary
-    if (type === "Birthday" || type === "Anniversary") {
-      isRecurringYearly = true;
-      date = normalizeBirthdayDate(date);
-    }
-
-    return { title, type, date, time, location, isRecurringYearly };
-  };
-
-  const parseNaturalDate = (dateStr: string): Date => {
-    const str = dateStr.toLowerCase().trim();
-    const today = new Date();
-
-    // Handle relative dates
-    if (str.includes("today")) return today;
-    if (str.includes("tomorrow")) {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      return tomorrow;
-    }
-    if (str.includes("next week")) {
-      const nextWeek = new Date(today);
-      nextWeek.setDate(today.getDate() + 7);
-      return nextWeek;
-    }
-
-    // Clean ordinal suffixes (e.g., "june 15th" -> "june 15")
     let cleaned = str.replace(/(\d+)(st|nd|rd|th)/g, "$1");
 
-    // Month map for lookup
     const monthsMap: { [key: string]: number } = {
       jan: 0, january: 0,
       feb: 1, february: 1,
@@ -361,7 +506,6 @@ export default function FutureEventScreen() {
       dec: 11, december: 11
     };
 
-    // 1. Month Name Formats (e.g., "June 15", "15 June", "June 15, 2026")
     const monthMatch = cleaned.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
     if (monthMatch) {
       const monthName = monthMatch[1];
@@ -371,62 +515,173 @@ export default function FutureEventScreen() {
       let day = today.getDate();
       let year = today.getFullYear();
       
+      let dayFound = false;
       for (const numStr of numbers) {
         const num = parseInt(numStr, 10);
         if (numStr.length === 4) {
           year = num;
-        } else if (num >= 1 && num <= 31) {
+        } else if (num >= 1 && num <= 31 && !dayFound) {
           day = num;
+          dayFound = true;
         }
       }
-      return new Date(year, monthIndex, day);
+      
+      let parsedDate = new Date(year, monthIndex, day);
+      if (parsedDate < today && !cleaned.includes(String(year))) {
+        parsedDate.setFullYear(year + 1);
+      }
+      return { date: parsedDate, isSpecified: true };
     }
 
-    // 2. Numeric Formats with Year: YYYY-MM-DD
-    const ymd = cleaned.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    const ymd = cleaned.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/);
     if (ymd) {
-      return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+      const parsedDate = new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+      return { date: parsedDate, isSpecified: true };
     }
 
-    // DD/MM/YYYY or MM/DD/YYYY
-    const dmyOrMdy = cleaned.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    const dmyOrMdy = cleaned.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
     if (dmyOrMdy) {
       const p1 = parseInt(dmyOrMdy[1], 10);
       const p2 = parseInt(dmyOrMdy[2], 10);
       const year = parseInt(dmyOrMdy[3], 10);
       if (p1 > 12) {
-        return new Date(year, p2 - 1, p1);
+        return { date: new Date(year, p2 - 1, p1), isSpecified: true };
       } else if (p2 > 12) {
-        return new Date(year, p1 - 1, p2);
+        return { date: new Date(year, p1 - 1, p2), isSpecified: true };
       } else {
-        return new Date(year, p2 - 1, p1);
+        return { date: new Date(year, p2 - 1, p1), isSpecified: true };
       }
     }
 
-    // 3. Numeric Formats without Year: DD/MM or MM/DD
-    const dmOrMd = cleaned.match(/^(\d{1,2})[-/](\d{1,2})$/);
+    const dmOrMd = cleaned.match(/\b(\d{1,2})[-/](\d{1,2})\b/);
     if (dmOrMd) {
       const p1 = parseInt(dmOrMd[1], 10);
       const p2 = parseInt(dmOrMd[2], 10);
       const year = today.getFullYear();
+      let parsedDate: Date;
       if (p1 > 12) {
-        return new Date(year, p2 - 1, p1);
+        parsedDate = new Date(year, p2 - 1, p1);
       } else if (p2 > 12) {
-        return new Date(year, p1 - 1, p2);
+        parsedDate = new Date(year, p1 - 1, p2);
       } else {
-        return new Date(year, p2 - 1, p1);
+        parsedDate = new Date(year, p2 - 1, p1);
+      }
+      if (parsedDate < today) {
+        parsedDate.setFullYear(year + 1);
+      }
+      return { date: parsedDate, isSpecified: true };
+    }
+
+    try {
+      const fallback = new Date(cleaned);
+      if (!isNaN(fallback.getTime())) {
+        return { date: fallback, isSpecified: true };
+      }
+    } catch (e) {}
+
+    return { date: today, isSpecified: false };
+  };
+
+  const parseNaturalLanguageEvent = (text: string): VoicePreview => {
+    const lower = text.toLowerCase().trim();
+    
+    let type: EventType = "Other";
+    for (const key of Object.keys(TRIGGER_KEYWORDS) as EventType[]) {
+      const words = TRIGGER_KEYWORDS[key];
+      if (words.some((word) => lower.includes(word))) {
+        type = key;
+        break;
       }
     }
-
-    // 4. Standard Parsing Fallback
-    try {
-      const date = new Date(cleaned);
-      if (!isNaN(date.getTime())) return date;
-    } catch (e) {
-      // Ignore
+    
+    const locResult = parseNaturalLocation(text);
+    const location = locResult.location;
+    const isLocationSpecified = locResult.isSpecified;
+    
+    const dateResult = parseNaturalDateWithSpec(text);
+    let date = dateResult.date;
+    const isDateSpecified = dateResult.isSpecified;
+    
+    const timeResult = parseNaturalTime(text);
+    const time = timeResult.time || "10:00 AM";
+    const isTimeSpecified = timeResult.isSpecified;
+    
+    let title = text;
+    title = title.replace(/^(i\s+have\s+an?\s+|it's\s+|she\s+has\s+an?\s+|he\s+has\s+an?\s+)/i, "");
+    title = title.replace(/\b(day after tomorrow|tomorrow|today|next week|next month|next year)\b/gi, "");
+    
+    const weekdaysRegex = /\b(next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/gi;
+    title = title.replace(weekdaysRegex, "");
+    
+    const monthNamesRegex = /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b\s*\d{1,2}(st|nd|rd|th)?/gi;
+    const dayMonthRegex = /\b\d{1,2}(st|nd|rd|th)?\s*(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/gi;
+    const numDateRegex = /\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/g;
+    const numDateRegex2 = /\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b/g;
+    title = title.replace(monthNamesRegex, "");
+    title = title.replace(dayMonthRegex, "");
+    title = title.replace(numDateRegex, "");
+    title = title.replace(numDateRegex2, "");
+    
+    title = title.replace(/(\bat\s+)?\d{1,2}([:.]\d{2})?\s*(am|pm)/gi, "");
+    title = title.replace(/\b(noon|midnight|morning|afternoon|evening|night)\b/gi, "");
+    
+    if (location) {
+      if (type === "Vacation" && text.toLowerCase().includes("to " + location.toLowerCase())) {
+        // keep to location
+      } else {
+        const locEscaped = location.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const locRegex = new RegExp(`\\b(in|at|near|to)\\s+${locEscaped}\\b`, 'gi');
+        title = title.replace(locRegex, "");
+        const locRegex2 = new RegExp(`\\b${locEscaped}\\b`, 'gi');
+        title = title.replace(locRegex2, "");
+      }
     }
-
-    return today;
+    
+    title = title.replace(/\b(on|at|in|near|to|for|with)\s*$/gi, "");
+    title = title.replace(/\s+/g, " ").trim();
+    
+    const finalTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
+    
+    let isRecurringYearly = false;
+    if (type === "Birthday" || type === "Anniversary") {
+      isRecurringYearly = true;
+      date = normalizeBirthdayDate(date);
+    }
+    
+    let confidenceScore = 0;
+    if (finalTitle && finalTitle.trim().length > 0) {
+      confidenceScore += 30;
+    }
+    if (isDateSpecified) {
+      confidenceScore += 30;
+    }
+    if (isTimeSpecified) {
+      confidenceScore += 20;
+    }
+    if (isLocationSpecified) {
+      confidenceScore += 20;
+    }
+    
+    let confidenceLevel: "High" | "Medium" | "Needs Review" = "Needs Review";
+    if (confidenceScore >= 80) {
+      confidenceLevel = "High";
+    } else if (confidenceScore >= 50) {
+      confidenceLevel = "Medium";
+    }
+    
+    return { 
+      title: finalTitle, 
+      type, 
+      date, 
+      time, 
+      location, 
+      isRecurringYearly,
+      isDateSpecified,
+      isTimeSpecified,
+      isLocationSpecified,
+      confidenceScore,
+      confidenceLevel
+    };
   };
 
   const normalizeBirthdayDate = (selectedDate: Date): Date => {
@@ -505,14 +760,32 @@ export default function FutureEventScreen() {
   const handleConfirmVoiceEvent = async () => {
     if (!profile || !voicePreview) return;
 
+    let title = voicePreview.title.trim();
+    if (!title) {
+      title = `${voicePreview.type} Event`;
+    }
+
+    if (!voicePreview.date || isNaN(voicePreview.date.getTime())) {
+      Alert.alert("Invalid Date", "Please select a valid date for the event.");
+      return;
+    }
+
+    const timeRegex = /^\d{1,2}:\d{2}\s*(AM|PM)$/i;
+    const hourRegex = /^\d{1,2}\s*(AM|PM)$/i;
+    const isValidTime = timeRegex.test(voicePreview.time) || hourRegex.test(voicePreview.time);
+    if (!isValidTime) {
+      Alert.alert("Invalid Time", "Please enter or select a valid time (e.g. 3:00 PM or 3 PM)");
+      return;
+    }
+
     try {
       await futureEventService.addEvent({
         profileID: profile.id,
-        title: voicePreview.title,
+        title: title,
         type: voicePreview.type,
         eventDate: voicePreview.date,
         eventTime: voicePreview.time,
-        location: voicePreview.location || undefined,
+        location: voicePreview.location.trim() || undefined,
         reminderOptions: voicePreview.isRecurringYearly ? ["same_day"] : ["1_day_before"],
         sendReminderToSpouse: false,
         isShared: false,
@@ -775,137 +1048,138 @@ export default function FutureEventScreen() {
     const isCompleted = !!item.completedAt;
 
     return (
-      <View style={[styles.card, isCompleted && styles.completedCardOpacity]}>
-        <View style={[styles.priorityBar, { backgroundColor: EVENT_COLORS[item.type] }]} />
+      <AppCard
+        key={item.id}
+        stripeColor={EVENT_COLORS[item.type]}
+        style={isCompleted ? styles.completedCardOpacity : undefined}
+      >
+        <View style={styles.cardHeader}>
+          <TouchableOpacity style={styles.checkbox} onPress={() => toggleCompletion(item)}>
+            <MaterialCommunityIcons
+              name={isCompleted ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+              size={22}
+              color={isCompleted ? "#10B981" : "#9CA3AF"}
+            />
+          </TouchableOpacity>
 
-        <View style={styles.cardMain}>
-          <View style={styles.cardHeader}>
-            <TouchableOpacity style={styles.checkbox} onPress={() => toggleCompletion(item)}>
-              <MaterialCommunityIcons
-                name={isCompleted ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
-                size={22}
-                color={isCompleted ? "#10B981" : "#9CA3AF"}
-              />
-            </TouchableOpacity>
-
-            <View style={styles.taskInfo}>
-              <Text style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}>
-                {item.title}
-              </Text>
-              
-              <View style={styles.taskMeta}>
-                <View style={styles.metaRow}>
-                  <Text style={styles.categoryIconText}>{EVENT_ICONS[item.type]}</Text>
-                  <Text style={styles.metaLabelText}>{item.type}</Text>
-                </View>
-                
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabelText}>
-                    📅 {formatDate(item.eventDate)}
-                  </Text>
-                </View>
-                
-                {item.eventTime && (
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaLabelText}>⏰ {item.eventTime}</Text>
-                  </View>
-                )}
-
-                {isOverdue && (
-                  <Text style={[styles.metaLabelText, styles.overdueDateText]}>
-                    ⚠️ Overdue
-                  </Text>
-                )}
-                
-                {!isCompleted && !isOverdue && daysUntil >= 0 && (
-                  <View style={[styles.sectionBadge, { backgroundColor: EVENT_COLORS[item.type] + "20" }]}>
-                    <Text style={[styles.sectionBadgeText, { color: EVENT_COLORS[item.type] }]}>
-                      {daysUntil === 0 ? "Today" : `${daysUntil}d left`}
-                    </Text>
-                  </View>
-                )}
+          <View style={styles.taskInfo}>
+            <Text style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}>
+              {item.title}
+            </Text>
+            
+            <View style={styles.taskMeta}>
+              <View style={styles.metaRow}>
+                <Text style={styles.categoryIconText}>{EVENT_ICONS[item.type]}</Text>
+                <Text style={styles.metaLabelText}>{item.type}</Text>
               </View>
-            </View>
+              
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabelText}>
+                  📅 {formatDate(item.eventDate)}
+                </Text>
+              </View>
+              
+              {item.eventTime && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabelText}>⏰ {item.eventTime}</Text>
+                </View>
+              )}
 
-            <TouchableOpacity style={styles.chevron} onPress={() => setExpandedEventId(isExpanded ? null : item.id)}>
-              <MaterialCommunityIcons
-                name={isExpanded ? "chevron-up" : "chevron-down"}
-                size={20}
-                color="#6B7280"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {isExpanded && (
-            <View style={styles.cardBody}>
-              {item.notes && (
-                <Text style={styles.descriptionText}>
-                  {item.notes}
+              {isOverdue && (
+                <Text style={[styles.metaLabelText, styles.overdueDateText]}>
+                  ⚠️ Overdue
                 </Text>
               )}
-
-              {item.location && (
-                <View style={[styles.metaRow, { marginBottom: 8 }]}>
-                  <Text style={styles.metaLabelText}>📍 Location: {item.location}</Text>
+              
+              {!isCompleted && !isOverdue && daysUntil >= 0 && (
+                <View style={[styles.sectionBadge, { backgroundColor: EVENT_COLORS[item.type] + "20" }]}>
+                  <Text style={[styles.sectionBadgeText, { color: EVENT_COLORS[item.type] }]}>
+                    {daysUntil === 0 ? "Today" : `${daysUntil}d left`}
+                  </Text>
                 </View>
               )}
-
-              <View style={styles.eventTags}>
-                {item.isRecurringYearly && (
-                  <View style={[styles.tag, styles.recurringTag]}>
-                    <Text style={styles.tagText}>🔁 Yearly</Text>
-                  </View>
-                )}
-                {item.isShared && (
-                  <View style={[styles.tag, styles.sharedTag]}>
-                    <Text style={styles.tagText}>👨‍👩‍👧 Shared</Text>
-                  </View>
-                )}
-                {item.sendReminderToSpouse && (
-                  <View style={[styles.tag, styles.spouseTag]}>
-                    <Text style={styles.tagText}>💕 Spouse</Text>
-                  </View>
-                )}
-                {item.reminderOptions && item.reminderOptions.length > 0 && (
-                  <View style={[styles.tag, styles.reminderTag]}>
-                    <Text style={styles.tagText}>
-                      🔔 {item.reminderOptions.join(", ").replace(/_/g, " ")}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.cardActionsContainer}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.editActionBtn]}
-                  onPress={() => openEditModal(item)}
-                >
-                  <MaterialCommunityIcons name="pencil" size={14} color="#FFF" />
-                  <Text style={styles.actionBtnText}>Edit</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.deleteActionBtn]}
-                  onPress={() => handleDelete(item.id)}
-                >
-                  <MaterialCommunityIcons name="trash-can" size={14} color="#FFF" />
-                  <Text style={styles.actionBtnText}>Delete</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: item.isShared ? "#10B981" : "#6B7280" }]}
-                  onPress={() => handleToggleShare(item.id, item.isShared)}
-                >
-                  <MaterialCommunityIcons name={item.isShared ? "share-variant" : "share-variant-outline"} size={14} color="#FFF" />
-                  <Text style={styles.actionBtnText}>{item.isShared ? "Shared" : "Share"}</Text>
-                </TouchableOpacity>
-              </View>
             </View>
-          )}
+          </View>
+
+          <TouchableOpacity style={styles.chevron} onPress={() => setExpandedEventId(isExpanded ? null : item.id)}>
+            <MaterialCommunityIcons
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
         </View>
-      </View>
+
+        {isExpanded && (
+          <View style={styles.cardBody}>
+            {item.notes && (
+              <Text style={styles.descriptionText}>
+                {item.notes}
+              </Text>
+            )}
+
+            {item.location && (
+              <View style={[styles.metaRow, { marginBottom: 8 }]}>
+                <Text style={styles.metaLabelText}>📍 Location: {item.location}</Text>
+              </View>
+            )}
+
+            <View style={styles.eventTags}>
+              {item.isRecurringYearly && (
+                <View style={[styles.tag, styles.recurringTag]}>
+                  <Text style={styles.tagText}>🔁 Yearly</Text>
+                </View>
+              )}
+              {item.isShared && (
+                <View style={[styles.tag, styles.sharedTag]}>
+                  <Text style={styles.tagText}>👨‍👩‍👧 Shared</Text>
+                </View>
+              )}
+              {item.sendReminderToSpouse && (
+                <View style={[styles.tag, styles.spouseTag]}>
+                  <Text style={styles.tagText}>💕 Spouse</Text>
+                </View>
+              )}
+              {item.reminderOptions && item.reminderOptions.length > 0 && (
+                <View style={[styles.tag, styles.reminderTag]}>
+                  <Text style={styles.tagText}>
+                    🔔 {item.reminderOptions.join(", ").replace(/_/g, " ")}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardActionsContainer}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.editActionBtn]}
+                onPress={() => openEditModal(item)}
+              >
+                <MaterialCommunityIcons name="pencil" size={14} color="#FFF" />
+                <Text style={styles.actionBtnText}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.deleteActionBtn]}
+                onPress={() => handleDelete(item.id)}
+              >
+                <MaterialCommunityIcons name="trash-can" size={14} color="#FFF" />
+                <Text style={styles.actionBtnText}>Delete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: item.isShared ? "#10B981" : "#6B7280" }]}
+                onPress={() => handleToggleShare(item.id, item.isShared)}
+              >
+                <MaterialCommunityIcons name={item.isShared ? "share-variant" : "share-variant-outline"} size={14} color="#FFF" />
+                <Text style={styles.actionBtnText}>{item.isShared ? "Shared" : "Share"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </AppCard>
     );
   };
+
 
   return (
     <>
@@ -914,36 +1188,37 @@ export default function FutureEventScreen() {
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           
           {/* Header Productivity Card */}
-          <View style={styles.headerCard}>
+          <View style={[styles.headerCard, { backgroundColor: "#2563EB", borderColor: "#2563EB", borderRadius: 16 }]}>
             <View style={styles.headerTopRow}>
               <View style={styles.greetingSection}>
-                <Text style={styles.greetingTitle}>Your Future Events</Text>
-                <Text style={styles.greetingSubtitle}>Stay on top of your schedule!</Text>
+                <Text style={[styles.greetingTitle, { color: "#93C5FD" }]}>Your Future Events</Text>
+                <Text style={[styles.greetingSubtitle, { color: "#FFFFFF", fontSize: 13, fontWeight: "500", marginTop: 4 }]}>Stay on top of your schedule!</Text>
               </View>
               
               {/* Dynamic Progress Ring */}
-              <View style={styles.progressCircle}>
-                <Text style={styles.progressPercentText}>{Math.round(completionRate)}%</Text>
-                <Text style={styles.progressSubtext}>Done</Text>
+              <View style={[styles.progressCircle, { borderColor: "#60A5FA", backgroundColor: "rgba(255,255,255,0.1)" }]}>
+                <Text style={[styles.progressPercentText, { color: "#FFFFFF" }]}>{Math.round(completionRate)}%</Text>
+                <Text style={[styles.progressSubtext, { color: "#93C5FD" }]}>Done</Text>
               </View>
             </View>
             
             {/* Quick Stat Chips */}
             <View style={styles.statChipsRow}>
-              <View style={[styles.statChip, styles.statChipOverdue]}>
-                <Text style={[styles.statChipCount, styles.overdueChipText]}>{overdueCount}</Text>
-                <Text style={[styles.statChipLabel, styles.overdueChipText]}>Overdue</Text>
-              </View>
-              
-              <View style={[styles.statChip, styles.statChipPending]}>
-                <Text style={[styles.statChipCount, styles.pendingChipText]}>{pendingCount}</Text>
-                <Text style={[styles.statChipLabel, styles.pendingChipText]}>Pending</Text>
-              </View>
-              
-              <View style={[styles.statChip, styles.statChipDone]}>
-                <Text style={[styles.statChipCount, styles.doneChipText]}>{doneCount}</Text>
-                <Text style={[styles.statChipLabel, styles.doneChipText]}>Completed</Text>
-              </View>
+              <StatChip
+                count={overdueCount}
+                label="Overdue"
+                type="danger"
+              />
+              <StatChip
+                count={pendingCount}
+                label="Pending"
+                type="warning"
+              />
+              <StatChip
+                count={doneCount}
+                label="Completed"
+                type="success"
+              />
             </View>
           </View>
 
@@ -1016,35 +1291,175 @@ export default function FutureEventScreen() {
                   {/* Live Parsed Interpretation Preview Card */}
                   {voicePreview && (
                     <View style={styles.previewCard}>
+                      
+                      {/* Card Header with Template and Confidence */}
                       <View style={styles.previewCardHeader}>
-                        <Text style={styles.previewCardTitle}>✨ Interpreted Event Preview</Text>
-                      </View>
-                      <View style={styles.previewCardBody}>
-                        <Text style={styles.previewTextRow}>
-                          <Text style={styles.previewLabel}>Title: </Text>{voicePreview.title}
-                        </Text>
-                        <Text style={styles.previewTextRow}>
-                          <Text style={styles.previewLabel}>Type: </Text>{EVENT_ICONS[voicePreview.type]} {voicePreview.type}
-                        </Text>
-                        <Text style={styles.previewTextRow}>
-                          <Text style={styles.previewLabel}>Date: </Text>{formatDate(voicePreview.date)}
-                        </Text>
-                        <Text style={styles.previewTextRow}>
-                          <Text style={styles.previewLabel}>Time: </Text>{voicePreview.time}
-                        </Text>
-                        {voicePreview.location ? (
-                          <Text style={styles.previewTextRow}>
-                            <Text style={styles.previewLabel}>Location: </Text>{voicePreview.location}
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.previewCardTitle}>✨ Interpreted Event Preview</Text>
+                          <Text style={styles.detectedTemplateText}>
+                            Detected Template: {EVENT_ICONS[voicePreview.type]} {voicePreview.type} Template
                           </Text>
-                        ) : null}
+                        </View>
+                        
+                        {/* Confidence Badge */}
+                        <View style={[
+                          styles.confidenceBadge,
+                          voicePreview.confidenceLevel === "High" && styles.confidenceHigh,
+                          voicePreview.confidenceLevel === "Medium" && styles.confidenceMedium,
+                          voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLow,
+                        ]}>
+                          <Text style={[
+                            styles.confidenceBadgeText,
+                            voicePreview.confidenceLevel === "High" && styles.confidenceHighText,
+                            voicePreview.confidenceLevel === "Medium" && styles.confidenceMediumText,
+                            voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLowText,
+                          ]}>
+                            {voicePreview.confidenceLevel === "High" 
+                              ? "🟢 High Confidence" 
+                              : voicePreview.confidenceLevel === "Medium" 
+                                ? "🟡 Medium Confidence" 
+                                : "🔴 Needs Review"}{" "}
+                            ({voicePreview.confidenceScore}%)
+                          </Text>
+                        </View>
                       </View>
 
-                      <TouchableOpacity 
-                        style={styles.confirmCreateBtn}
-                        onPress={handleConfirmVoiceEvent}
-                      >
-                        <Text style={styles.confirmCreateBtnText}>Create Event</Text>
-                      </TouchableOpacity>
+                      <View style={styles.previewCardBody}>
+                        
+                        {/* Title input */}
+                        <Text style={styles.previewFieldLabel}>Event Title</Text>
+                        <TextInput
+                          style={styles.previewInput}
+                          value={voicePreview.title}
+                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, title: txt })}
+                          placeholder="Event Title"
+                          placeholderTextColor="#9CA3AF"
+                        />
+
+                        {/* Category selection */}
+                        <Text style={styles.previewFieldLabel}>Event Type</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewTypesScroll}>
+                          <View style={styles.typesRow}>
+                            {EVENT_TYPES.map((type) => (
+                              <TouchableOpacity
+                                key={type}
+                                style={[
+                                  styles.previewTypeChip,
+                                  voicePreview.type === type && styles.previewTypeChipActive,
+                                ]}
+                                onPress={() => {
+                                  const isBirthdayOrAnniversary = type === "Birthday" || type === "Anniversary";
+                                  setVoicePreview({ 
+                                    ...voicePreview, 
+                                    type,
+                                    isRecurringYearly: isBirthdayOrAnniversary ? true : voicePreview.isRecurringYearly
+                                  });
+                                }}
+                              >
+                                <Text style={[
+                                  styles.previewTypeChipText,
+                                  voicePreview.type === type && styles.previewTypeChipTextActive
+                                ]}>
+                                  {EVENT_ICONS[type]} {type}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </ScrollView>
+
+                        {/* Date and Time selectors side by side */}
+                        <View style={styles.previewSideBySide}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.previewFieldLabel}>Date</Text>
+                            <TouchableOpacity
+                              style={styles.previewSelectorBtn}
+                              onPress={() => {
+                                setCalendarTarget("voice");
+                                setShowDateCalendar(true);
+                              }}
+                            >
+                              <Text style={styles.previewSelectorBtnText}>
+                                📅 {formatDate(voicePreview.date)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.previewFieldLabel}>Time</Text>
+                            <TouchableOpacity
+                              style={styles.previewSelectorBtn}
+                              onPress={() => {
+                                setTimePickerTarget("voice");
+                                setShowTimePicker(true);
+                              }}
+                            >
+                              <Text style={styles.previewSelectorBtnText}>
+                                ⏰ {voicePreview.time || "Select Time"}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        
+                        {/* Missing Time Warning */}
+                        {!voicePreview.isTimeSpecified && (
+                          <View style={styles.missingBadgeWarning}>
+                            <Text style={styles.missingBadgeWarningText}>
+                              ⚠️ Missing Time (using 10:00 AM default)
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Location input */}
+                        <Text style={styles.previewFieldLabel}>Location</Text>
+                        <TextInput
+                          style={styles.previewInput}
+                          value={voicePreview.location}
+                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, location: txt, isLocationSpecified: !!txt.trim() })}
+                          placeholder="e.g. Colombo (Optional)"
+                          placeholderTextColor="#9CA3AF"
+                        />
+
+                        {/* Missing Location Warning */}
+                        {!voicePreview.isLocationSpecified && (
+                          <View style={styles.missingBadgeWarning}>
+                            <Text style={styles.missingBadgeWarningText}>
+                              ⚠️ Missing Location
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Yearly Recurrence Switch */}
+                        <View style={styles.previewSwitchRow}>
+                          <Text style={styles.previewSwitchLabel}>Recurring Yearly</Text>
+                          <Switch
+                            value={voicePreview.isRecurringYearly}
+                            onValueChange={(val) => setVoicePreview({ ...voicePreview, isRecurringYearly: val })}
+                            trackColor={{ false: "#D1D5DB", true: "#C084FC" }}
+                            thumbColor={voicePreview.isRecurringYearly ? "#7C3AED" : "#F3F4F6"}
+                          />
+                        </View>
+
+                      </View>
+
+                      {/* Confirm & Cancel Buttons */}
+                      <View style={styles.previewCardButtonsRow}>
+                        <TouchableOpacity 
+                          style={[styles.previewActionBtn, styles.previewCancelBtn]}
+                          onPress={() => {
+                            setVoiceInputText("");
+                            setVoicePreview(null);
+                          }}
+                        >
+                          <Text style={styles.previewCancelBtnText}>Clear</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          style={[styles.previewActionBtn, styles.previewConfirmBtn]}
+                          onPress={handleConfirmVoiceEvent}
+                        >
+                          <Text style={styles.previewConfirmBtnText}>Create Event</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -1115,7 +1530,10 @@ export default function FutureEventScreen() {
                       <Text style={styles.label}>Event Date *</Text>
                       <TouchableOpacity
                         style={styles.input}
-                        onPress={() => setShowDateCalendar(true)}
+                        onPress={() => {
+                          setCalendarTarget("composer");
+                          setShowDateCalendar(true);
+                        }}
                       >
                         <Text style={composerDate ? styles.inputText : styles.placeholder}>
                           {composerDate ? formatDate(composerDate) : "Select date"}
@@ -1127,7 +1545,10 @@ export default function FutureEventScreen() {
                       <Text style={styles.label}>Event Time *</Text>
                       <TouchableOpacity
                         style={styles.input}
-                        onPress={() => setShowTimePicker(true)}
+                        onPress={() => {
+                          setTimePickerTarget("composer");
+                          setShowTimePicker(true);
+                        }}
                       >
                         <Text style={composerTime ? styles.inputText : styles.placeholder}>
                           {composerTime || "Select time"}
@@ -1247,57 +1668,21 @@ export default function FutureEventScreen() {
           </View>
 
           {/* Segmented Filter Control */}
-          <View style={styles.segmentedContainer}>
-            <TouchableOpacity
-              style={[
-                styles.filterPill,
-                activeTab === "this_week" && styles.filterPillActive,
-              ]}
-              onPress={() => setActiveTab("this_week")}
-            >
-              <Text style={[
-                styles.filterPillText,
-                activeTab === "this_week" && styles.filterPillTextActive
-              ]}>
-                This Week ({getThisWeekCount()})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterPill,
-                activeTab === "upcoming" && styles.filterPillActive,
-              ]}
-              onPress={() => setActiveTab("upcoming")}
-            >
-              <Text style={[
-                styles.filterPillText,
-                activeTab === "upcoming" && styles.filterPillTextActive
-              ]}>
-                Upcoming ({getUpcomingCount()})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterPill,
-                activeTab === "completed" && styles.filterPillActive,
-              ]}
-              onPress={() => setActiveTab("completed")}
-            >
-              <Text style={[
-                styles.filterPillText,
-                activeTab === "completed" && styles.filterPillTextActive
-              ]}>
-                Completed ({getCompletedCount()})
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedControl
+            tabs={[
+              { id: "this_week", label: `This Week (${getThisWeekCount()})` },
+              { id: "upcoming", label: `Upcoming (${getUpcomingCount()})` },
+              { id: "completed", label: `Completed (${getCompletedCount()})` },
+            ]}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as any)}
+            style={{ marginHorizontal: 16 }}
+          />
 
           {/* Timeline Listing */}
           <View style={styles.timelineContainer}>
             {loading ? (
-              <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 25 }} />
+              <LoadingState />
             ) : getFilteredEvents().length > 0 ? (
               getFilteredEvents().map((item) => (
                 <View key={item.id}>
@@ -1305,36 +1690,45 @@ export default function FutureEventScreen() {
                 </View>
               ))
             ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>📅</Text>
-                <Text style={styles.emptyText}>No events found</Text>
-                <Text style={styles.emptySubtext}>
-                  Expand the panels above to schedule a new event.
-                </Text>
-              </View>
+              <EmptyState
+                emoji="📅"
+                title="No events found"
+                subtitle="Expand the panels above to schedule a new event."
+              />
             )}
           </View>
 
         </ScrollView>
       </View>
 
-      {/* Manual Date Calendar Modal (Composer) */}
+      {/* Date Calendar Modal (Composer / Voice) */}
       <Calendar
         visible={showDateCalendar}
-        onClose={() => setShowDateCalendar(false)}
+        onClose={() => {
+          setShowDateCalendar(false);
+          setCalendarTarget(null);
+        }}
         onSelectDate={(date) => {
           let finalDate = date;
-          if ((composerType === "Birthday" || composerType === "Anniversary") && composerIsRecurringYearly) {
-            finalDate = normalizeBirthdayDate(date);
+          if (calendarTarget === "composer" || !calendarTarget) {
+            if ((composerType === "Birthday" || composerType === "Anniversary") && composerIsRecurringYearly) {
+              finalDate = normalizeBirthdayDate(date);
+            }
+            setComposerDate(finalDate);
+          } else if (calendarTarget === "voice" && voicePreview) {
+            if ((voicePreview.type === "Birthday" || voicePreview.type === "Anniversary") && voicePreview.isRecurringYearly) {
+              finalDate = normalizeBirthdayDate(date);
+            }
+            setVoicePreview({ ...voicePreview, date: finalDate, isDateSpecified: true });
           }
-          setComposerDate(finalDate);
           setShowDateCalendar(false);
+          setCalendarTarget(null);
         }}
-        selectedDate={composerDate}
+        selectedDate={calendarTarget === "voice" ? voicePreview?.date : composerDate}
         minDate={new Date()}
       />
 
-      {/* Manual Time Picker Modal (Composer) */}
+      {/* Time Picker Modal (Composer / Voice) */}
       <Modal visible={showTimePicker} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.timePickerModal}>
@@ -1347,16 +1741,21 @@ export default function FutureEventScreen() {
                   key={preset.value}
                   style={[
                     styles.timePresetOption,
-                    composerTime === preset.value && styles.timePresetOptionActive,
+                    (timePickerTarget === "voice" ? voicePreview?.time : composerTime) === preset.value && styles.timePresetOptionActive,
                   ]}
                   onPress={() => {
-                    setComposerTime(preset.value);
+                    if (timePickerTarget === "voice" && voicePreview) {
+                      setVoicePreview({ ...voicePreview, time: preset.value, isTimeSpecified: true });
+                    } else {
+                      setComposerTime(preset.value);
+                    }
                     setShowTimePicker(false);
+                    setTimePickerTarget(null);
                   }}
                 >
                   <Text style={[
                     styles.timePresetOptionText,
-                    composerTime === preset.value && styles.timePresetOptionTextActive,
+                    (timePickerTarget === "voice" ? voicePreview?.time : composerTime) === preset.value && styles.timePresetOptionTextActive,
                   ]}>
                     {preset.label}
                   </Text>
@@ -1367,8 +1766,14 @@ export default function FutureEventScreen() {
             <Text style={styles.sectionLabel}>Or Enter Custom Time</Text>
             <TextInput
               style={styles.input}
-              value={composerTime}
-              onChangeText={setComposerTime}
+              value={timePickerTarget === "voice" ? (voicePreview?.time || "") : composerTime}
+              onChangeText={(txt) => {
+                if (timePickerTarget === "voice" && voicePreview) {
+                  setVoicePreview({ ...voicePreview, time: txt, isTimeSpecified: !!txt.trim() });
+                } else {
+                  setComposerTime(txt);
+                }
+              }}
               placeholder="e.g. 3:30 PM or 15:30"
               placeholderTextColor="#9CA3AF"
             />
@@ -1376,13 +1781,19 @@ export default function FutureEventScreen() {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonCancel]}
-                onPress={() => setShowTimePicker(false)}
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setTimePickerTarget(null);
+                }}
               >
                 <Text style={styles.buttonCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSave]}
-                onPress={() => setShowTimePicker(false)}
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setTimePickerTarget(null);
+                }}
               >
                 <Text style={styles.buttonSaveText}>Done</Text>
               </TouchableOpacity>
@@ -1885,39 +2296,179 @@ const styles = StyleSheet.create({
   // Interpretation Preview Card
   previewCard: {
     backgroundColor: "#FFFBEB",
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: "#FDE68A",
-    padding: 12,
-    marginBottom: 8,
+    padding: 14,
+    marginBottom: 12,
   },
   previewCardHeader: {
-    marginBottom: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#FEF3C7",
+    paddingBottom: 8,
   },
   previewCardTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     color: "#D97706",
   },
+  detectedTemplateText: {
+    fontSize: 11,
+    color: "#4B5563",
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  confidenceBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confidenceBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  confidenceHigh: {
+    backgroundColor: "#D1FAE5",
+  },
+  confidenceHighText: {
+    color: "#065F46",
+  },
+  confidenceMedium: {
+    backgroundColor: "#FEF3C7",
+  },
+  confidenceMediumText: {
+    color: "#92400E",
+  },
+  confidenceLow: {
+    backgroundColor: "#FEE2E2",
+  },
+  confidenceLowText: {
+    color: "#991B1B",
+  },
   previewCardBody: {
-    gap: 4,
+    gap: 8,
     marginBottom: 12,
   },
-  previewTextRow: {
+  previewFieldLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginTop: 8,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  previewInput: {
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    borderRadius: 8,
+    padding: 8,
     fontSize: 13,
+    backgroundColor: "#FFFFFF",
     color: "#1F2937",
   },
-  previewLabel: {
+  previewTypesScroll: {
+    marginBottom: 4,
+  },
+  previewTypeChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.2,
+    borderColor: "#FCD34D",
+    marginRight: 6,
+  },
+  previewTypeChipActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#7C3AED",
+  },
+  previewTypeChipText: {
+    fontSize: 11,
+    color: "#4B5563",
     fontWeight: "700",
+  },
+  previewTypeChipTextActive: {
+    color: "#FFFFFF",
+  },
+  previewSideBySide: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  previewSelectorBtn: {
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+  },
+  previewSelectorBtnText: {
+    fontSize: 13,
+    color: "#1F2937",
+    fontWeight: "500",
+  },
+  missingBadgeWarning: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 6,
+    marginTop: 2,
+  },
+  missingBadgeWarningText: {
+    fontSize: 11,
+    color: "#B45309",
+    fontWeight: "600",
+  },
+  previewSwitchRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    backgroundColor: "#FFFFFF",
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+  },
+  previewSwitchLabel: {
+    fontSize: 12,
+    fontWeight: "600",
     color: "#4B5563",
   },
-  confirmCreateBtn: {
-    backgroundColor: "#7C3AED",
+  previewCardButtonsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+  previewActionBtn: {
+    flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: "center",
+    justifyContent: "center",
   },
-  confirmCreateBtnText: {
+  previewCancelBtn: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  previewCancelBtnText: {
+    color: "#4B5563",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  previewConfirmBtn: {
+    backgroundColor: "#7C3AED",
+  },
+  previewConfirmBtnText: {
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
