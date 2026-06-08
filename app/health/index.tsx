@@ -3,7 +3,6 @@ import DailySummaryCard, { buildTodayFeed } from "@/components/health/DailySumma
 import HealthCalendar from "@/components/health/HealthCalendar";
 import HealthScoreCard from "@/components/health/HealthScoreCard";
 import QuickActionBar from "@/components/health/QuickActionBar";
-import StreakCarousel from "@/components/health/StreakCarousel";
 import WellnessAvatar from "@/components/health/WellnessAvatar";
 import WellnessTimeline, { buildTimelineEntries } from "@/components/health/WellnessTimeline";
 import healthService from "@/services/healthService";
@@ -70,11 +69,6 @@ export default function HealthScreen() {
   const moodToday = moods.find(m => new Date(m.recordDate || m.createdAt).toDateString() === today.toDateString());
   const hasSevere = symptoms.some(s => new Date(s.recordDate || s.createdAt).toDateString() === today.toDateString() && s.severity === "Severe");
   const score = Math.round(Math.min(todayWater / 2000, 1) * 25 + (todaySleep > 0 ? Math.min(todaySleep / 8, 1) * 25 : 0) + medsCompliance * 25 + (moodToday ? 25 : 0));
-
-  const streak = (check: (ymd: string) => boolean) => { let n = 0; const d = new Date(); d.setHours(0, 0, 0, 0); while (check(d.toISOString().split("T")[0])) { n++; d.setDate(d.getDate() - 1); } return n; };
-  const waterStreak = streak(ymd => waterLogs.filter(l => new Date(l.recordedAt || l.createdAt).toISOString().split("T")[0] === ymd).reduce((s, l) => s + l.amountML, 0) >= 1500);
-  const sleepStreak = streak(ymd => sleepLogs.filter(l => new Date(l.recordedAt || l.createdAt).toISOString().split("T")[0] === ymd).reduce((_, l) => l.durationHours, 0) >= 7);
-  const medsStreak = enabledMeds.length > 0 ? streak(ymd => enabledMeds.every(m => m.takenDates?.includes(ymd))) : 0;
 
   const handleWater = async () => { try { const l = await healthService.addWaterLog(250); setWaterLogs(p => [l, ...p]); } catch {} };
   const handleSleep = async (h: number) => { try { const l = await healthService.addSleepLog(h); setSleepLogs(p => [l, ...p]); } catch {} };
@@ -205,8 +199,7 @@ export default function HealthScreen() {
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80, gap: 14 }}>
             <WellnessAvatar score={score} waterML={todayWater} sleepHours={todaySleep} hasSevereSymptom={hasSevere} />
             <HealthScoreCard score={score} waterML={todayWater} sleepHours={todaySleep} medsCompliance={medsCompliance} moodLogged={!!moodToday} />
-            <QuickActionBar waterML={todayWater} sleepHours={todaySleep} medicines={enabledMeds.map(m => ({ ...m, id: m._id || m.id }))} moodToday={moodToday?.mood || null} todayStr={todayStr} onDrinkWater={handleWater} onLogSleep={handleSleep} onToggleMed={handleMed} onLogMood={handleMood} />
-            <StreakCarousel waterStreak={waterStreak} sleepStreak={sleepStreak} medsStreak={medsStreak} wellnessStreak={0} />
+             <QuickActionBar waterML={todayWater} sleepHours={todaySleep} medicines={enabledMeds.map(m => ({ ...m, id: m._id || m.id }))} moodToday={moodToday?.mood || null} todayStr={todayStr} onDrinkWater={handleWater} onLogSleep={handleSleep} onToggleMed={handleMed} onLogMood={handleMood} />
             <AppointmentCard appointments={appointments} onSaved={loadAll} />
             <DailySummaryCard entries={buildTodayFeed(waterLogs, sleepLogs, moods, medicines, symptoms, vitals, todayStr)} />
           </ScrollView>

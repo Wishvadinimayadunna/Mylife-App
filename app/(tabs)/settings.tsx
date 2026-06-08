@@ -12,6 +12,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -44,7 +45,10 @@ export default function SettingsScreen() {
   const [loadingPartner, setLoadingPartner] = useState(true);
 
   useEffect(() => {
-    fetchPartnerStatus();
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchPartnerStatus();
+    });
+    return () => task.cancel();
   }, []);
 
   const fetchPartnerStatus = async () => {
@@ -135,7 +139,16 @@ export default function SettingsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.navigate("/(tabs)");
+            }
+          }}
+        >
           <Text style={styles.backBtnTxt}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
