@@ -22,6 +22,7 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -636,30 +637,49 @@ export default function ShoppingScreen() {
       </View>
 
       <View style={styles.appContainer}>
-        {/* INLINE PANELS (Embedded Creation) */}
-        <View style={styles.panelsContainer}>
-          
-          {/* Panel 1: Quick Add Card */}
-          <View style={[styles.inlinePanelCard, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
-            <TouchableOpacity 
-              style={styles.panelHeaderRow} 
-              onPress={() => {
-                setShowQuickAdd(!showQuickAdd);
-                setShowBulkAdd(false);
-                if (editingItem) handleCancelEdit();
-              }}
-            >
-              <View style={styles.panelHeaderLeft}>
-                <Text style={styles.panelIcon}>⚡</Text>
-                <Text style={styles.panelTitle}>
+        {/* ACTION BUTTONS ROW */}
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}
+            onPress={() => {
+              setShowQuickAdd(true);
+              setShowBulkAdd(false);
+            }}
+          >
+            <Text style={[styles.actionBtnText, { color: COLOR_BLUE }]}>⚡ Quick Add</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" }]}
+            onPress={() => {
+              setShowBulkAdd(true);
+              setShowQuickAdd(false);
+            }}
+          >
+            <Text style={[styles.actionBtnText, { color: "#7C3AED" }]}>📝 Bulk Add</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Add Modal */}
+        <Modal
+          visible={showQuickAdd}
+          transparent
+          animationType="slide"
+          onRequestClose={handleCancelEdit}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>
                   {editingItem ? "Edit Item Details" : "Quick Add Item"}
                 </Text>
+                <TouchableOpacity onPress={handleCancelEdit} style={styles.modalCloseBtn}>
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.chevronIconText}>{showQuickAdd ? "▲" : "▼"}</Text>
-            </TouchableOpacity>
-
-            {showQuickAdd && (
-              <View style={styles.panelContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+                {/* Form Content */}
                 {/* 1. Item Name Input */}
                 <Text style={styles.formLabel}>Item Name</Text>
                 <TextInput
@@ -793,14 +813,12 @@ export default function ShoppingScreen() {
 
                 {/* Buttons */}
                 <View style={styles.formButtonsRow}>
-                  {editingItem && (
-                    <TouchableOpacity
-                      style={[styles.formSubmitButton, styles.formCancelButton]}
-                      onPress={handleCancelEdit}
-                    >
-                      <Text style={styles.formCancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.formSubmitButton, styles.formCancelButton]}
+                    onPress={handleCancelEdit}
+                  >
+                    <Text style={styles.formCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.formSubmitButton, { backgroundColor: COLOR_BLUE }]}
                     onPress={handleSingleSubmit}
@@ -810,29 +828,39 @@ export default function ShoppingScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            )}
+              </ScrollView>
+            </View>
           </View>
+        </Modal>
 
-          {/* Panel 2: Bulk Add Card */}
-          <View style={[styles.inlinePanelCard, { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" }]}>
-            <TouchableOpacity 
-              style={styles.panelHeaderRow} 
-              onPress={() => {
-                setShowBulkAdd(!showBulkAdd);
-                setShowQuickAdd(false);
-                if (editingItem) handleCancelEdit();
-              }}
-            >
-              <View style={styles.panelHeaderLeft}>
-                <Text style={styles.panelIcon}>📝</Text>
-                <Text style={styles.panelTitle}>Bulk Add List</Text>
+        {/* Bulk Add Modal */}
+        <Modal
+          visible={showBulkAdd}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            setShowBulkAdd(false);
+            setBulkItemsText("");
+            setParsedBulkPreview([]);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>Bulk Add List</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowBulkAdd(false);
+                    setBulkItemsText("");
+                    setParsedBulkPreview([]);
+                  }}
+                  style={styles.modalCloseBtn}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.chevronIconText}>{showBulkAdd ? "▲" : "▼"}</Text>
-            </TouchableOpacity>
-
-            {showBulkAdd && (
-              <View style={styles.panelContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
                 <Text style={styles.formLabel}>Enter Items List</Text>
                 <TextInput
                   style={styles.bulkTextarea}
@@ -875,24 +903,35 @@ export default function ShoppingScreen() {
                 )}
 
                 {/* Submit bulk items */}
-                <TouchableOpacity
-                  style={[
-                    styles.formSubmitButton,
-                    { backgroundColor: "#7C3AED" },
-                    parsedBulkPreview.length === 0 && { opacity: 0.5 },
-                  ]}
-                  disabled={parsedBulkPreview.length === 0}
-                  onPress={handleBulkSubmit}
-                >
-                  <Text style={styles.formSubmitButtonText}>
-                    Add {parsedBulkPreview.length} Items
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                <View style={styles.formButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.formSubmitButton, styles.formCancelButton]}
+                    onPress={() => {
+                      setShowBulkAdd(false);
+                      setBulkItemsText("");
+                      setParsedBulkPreview([]);
+                    }}
+                  >
+                    <Text style={styles.formCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.formSubmitButton,
+                      { backgroundColor: "#7C3AED" },
+                      parsedBulkPreview.length === 0 && { opacity: 0.5 },
+                    ]}
+                    disabled={parsedBulkPreview.length === 0}
+                    onPress={handleBulkSubmit}
+                  >
+                    <Text style={styles.formSubmitButtonText}>
+                      Add {parsedBulkPreview.length} Items
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
           </View>
-
-        </View>
+        </Modal>
 
         {/* Segmented Filter Bar Selector */}
         <SegmentedControl
@@ -996,10 +1035,68 @@ const styles = StyleSheet.create({
   },
 
   // Inline expanding cards style
-  panelsContainer: {
+  actionButtonsRow: {
+    flexDirection: "row",
     paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 10,
+    paddingVertical: 12,
+    gap: 12,
+    backgroundColor: COLOR_CARD,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLOR_BORDER,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: COLOR_CARD,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 30,
+    maxHeight: "85%",
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: "#9CA3AF",
+    fontWeight: "500",
   },
   inlinePanelCard: {
     borderWidth: 0.5,

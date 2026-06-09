@@ -13,7 +13,7 @@ import { useAppStore } from "@/store/appStore";
 import { FamilyMember, RelationshipType } from "@/types";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack, useFocusEffect } from "expo-router";
-import React, { useCallback, useState, useRef } from "react";
+import React, { useCallback, useState, useRef, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -74,7 +74,6 @@ export default function FamilyScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [filteredMembers, setFilteredMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
 
@@ -113,17 +112,6 @@ export default function FamilyScreen() {
     try {
       const data = await familyService.getFamilyMembers(profile?.id || "");
       setMembers(data);
-
-      // Filter list based on active tab
-      let filtered: FamilyMember[] = [];
-      if (activeTab === "all") {
-        filtered = data;
-      } else if (activeTab === "immediate") {
-        filtered = data.filter(m => ["Wife", "Husband", "Son", "Daughter"].includes(m.relationship));
-      } else {
-        filtered = data.filter(m => ["Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother"].includes(m.relationship));
-      }
-      setFilteredMembers(filtered);
     } catch (error) {
       console.error("Load family members error:", error);
     } finally {
@@ -134,8 +122,19 @@ export default function FamilyScreen() {
   useFocusEffect(
     useCallback(() => {
       loadFamilyMembers();
-    }, [profile, activeTab]),
+    }, [profile]),
   );
+
+  const filteredMembers = useMemo(() => {
+    if (activeTab === "all") {
+      return members;
+    } else if (activeTab === "immediate") {
+      return members.filter(m => ["Wife", "Husband", "Son", "Daughter"].includes(m.relationship));
+    } else {
+      // Extended tab: include both classic Extended Family and Others
+      return members.filter(m => !["Wife", "Husband", "Son", "Daughter"].includes(m.relationship));
+    }
+  }, [members, activeTab]);
 
   const resetComposer = () => {
     setComposerName("");
@@ -274,12 +273,12 @@ export default function FamilyScreen() {
   };
 
   // Computations for Header Card
-  const totalCount = members.length;
-  const remindersCount = members.filter(m => m.birthdayReminderEnabled).length;
+  const totalCount = filteredMembers.length;
+  const remindersCount = filteredMembers.filter(m => m.birthdayReminderEnabled).length;
   const completionRate = totalCount > 0 ? (remindersCount / totalCount) * 100 : 0;
 
   // Birthdays count in the next 30 days
-  const upcomingBirthdaysCount = members.filter(m => {
+  const upcomingBirthdaysCount = filteredMembers.filter(m => {
     const dob = new Date(m.dateOfBirth);
     const today = new Date();
     const nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
@@ -316,8 +315,6 @@ export default function FamilyScreen() {
       if (extended.length > 0) {
         sections.push({ title: "Extended Family", data: extended, bgColor: "#FEF3C7", color: "#D97706" });
       }
-    }
-    if (activeTab === "all") {
       if (others.length > 0) {
         sections.push({ title: "Others", data: others, bgColor: "#F3F4F6", color: "#6B7280" });
       }
@@ -606,7 +603,13 @@ export default function FamilyScreen() {
           ) : filteredMembers.length === 0 ? (
             <EmptyState
               emoji="👨‍👩‍👧‍👦"
-              title="No family members found"
+              title={
+                activeTab === "immediate"
+                  ? "No immediate family members"
+                  : activeTab === "extended"
+                  ? "No extended family members"
+                  : "No family members found"
+              }
               subtitle="Use the composer above to add family members and customize tracking."
             />
           ) : (

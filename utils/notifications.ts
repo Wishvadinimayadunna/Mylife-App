@@ -104,8 +104,8 @@ export async function scheduleNotification(
   type: NotificationType,
   data?: any,
 ): Promise<string | null> {
-  if (!Notifications || Platform.OS === "web") {
-    if (!Notifications && Platform.OS !== "web") {
+  if (!Notifications || (Platform.OS as string) === "web") {
+    if (!Notifications && (Platform.OS as string) !== "web") {
       console.warn("Notifications not available");
     }
     return null;
@@ -114,7 +114,7 @@ export async function scheduleNotification(
   try {
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) {
-      if (Platform.OS !== "web") {
+      if ((Platform.OS as string) !== "web") {
         console.warn("No notification permission");
       }
       return null;
@@ -122,7 +122,7 @@ export async function scheduleNotification(
 
     // Guard: don't schedule notifications in the past
     if (triggerDate <= new Date()) {
-      if (Platform.OS !== "web") {
+      if ((Platform.OS as string) !== "web") {
         console.warn(
           `[Notifications] Skipped past-date notification: "${title}" at ${triggerDate.toISOString()}`,
         );
@@ -148,7 +148,7 @@ export async function scheduleNotification(
       trigger: triggerDate as any,
     });
 
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.log(
         `[Notifications] Scheduled "${title}" for ${triggerDate.toLocaleString()} → id: ${notificationId}`,
       );
@@ -156,7 +156,7 @@ export async function scheduleNotification(
 
     return notificationId;
   } catch (error) {
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.error("Error scheduling notification:", error);
     }
     return null;
@@ -174,8 +174,8 @@ export async function scheduleDailyNotification(
   type: NotificationType,
   data?: any,
 ): Promise<string | null> {
-  if (!Notifications || Platform.OS === "web") {
-    if (!Notifications && Platform.OS !== "web") {
+  if (!Notifications || (Platform.OS as string) === "web") {
+    if (!Notifications && (Platform.OS as string) !== "web") {
       console.warn("Notifications not available");
     }
     return null;
@@ -201,7 +201,7 @@ export async function scheduleDailyNotification(
 
     return notificationId;
   } catch (error) {
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.error("Error scheduling daily notification:", error);
     }
     return null;
@@ -214,16 +214,16 @@ export async function scheduleDailyNotification(
 export async function cancelNotification(
   notificationId: string,
 ): Promise<void> {
-  if (!Notifications || Platform.OS === "web") {
+  if (!Notifications || (Platform.OS as string) === "web") {
     return;
   }
   try {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.log(`[Notifications] Cancelled notification: ${notificationId}`);
     }
   } catch (error) {
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.error("Error canceling notification:", error);
     }
   }
@@ -235,7 +235,7 @@ export async function cancelNotification(
 export async function cancelNotifications(
   notificationIds: string[],
 ): Promise<void> {
-  if (!Notifications || Platform.OS === "web" || notificationIds.length === 0) return;
+  if (!Notifications || (Platform.OS as string) === "web" || notificationIds.length === 0) return;
   await Promise.allSettled(
     notificationIds.map((id) => cancelNotification(id)),
   );
@@ -245,13 +245,13 @@ export async function cancelNotifications(
 // CANCEL ALL NOTIFICATIONS
 // ============================================
 export async function cancelAllNotifications(): Promise<void> {
-  if (!Notifications || Platform.OS === "web") {
+  if (!Notifications || (Platform.OS as string) === "web") {
     return;
   }
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (error) {
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.error("Error canceling all notifications:", error);
     }
   }
@@ -261,13 +261,13 @@ export async function cancelAllNotifications(): Promise<void> {
 // GET ALL SCHEDULED NOTIFICATIONS
 // ============================================
 export async function getAllScheduledNotifications() {
-  if (!Notifications || Platform.OS === "web") {
+  if (!Notifications || (Platform.OS as string) === "web") {
     return [];
   }
   try {
     return await Notifications.getAllScheduledNotificationsAsync();
   } catch (error) {
-    if (Platform.OS !== "web") {
+    if ((Platform.OS as string) !== "web") {
       console.error("Error getting scheduled notifications:", error);
     }
     return [];
