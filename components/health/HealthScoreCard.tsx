@@ -5,6 +5,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
+import { AppCard } from "../ui/AppCard";
 
 interface Props {
   score: number; // 0–100
@@ -54,7 +55,7 @@ export default function HealthScoreCard({ score, waterML, sleepHours, medsCompli
   const INNER_SIZE = RING_SIZE - RING_BORDER * 2;
 
   return (
-    <View style={s.card}>
+    <AppCard style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
       <View style={s.ringArea}>
         {/* Base grey ring */}
         <View style={[s.ringBase, { width: RING_SIZE, height: RING_SIZE, borderRadius: RING_SIZE / 2, borderColor: "#F3F4F6", borderWidth: RING_BORDER }]}>
@@ -124,7 +125,7 @@ export default function HealthScoreCard({ score, waterML, sleepHours, medsCompli
           <ScoreRow label="😊 Mood" value={moodLogged ? 1 : 0} color="#F59E0B" />
         </View>
       </View>
-    </View>
+    </AppCard>
   );
 }
 

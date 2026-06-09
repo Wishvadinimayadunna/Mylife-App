@@ -4,6 +4,7 @@
 // ============================================
 
 import Calendar from '@/components/ui/calendar';
+import { AppCard } from '@/components/ui/AppCard';
 import { Colors } from '@/constants/theme';
 import profileService from '@/services/profileService';
 import { useAppStore } from '@/store/appStore';
@@ -58,6 +59,10 @@ export default function ProfileScreen() {
     try {
       if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.address) {
         Alert.alert('Error', 'Please fill in all required fields (Name, Email, Phone, and Address)');
+        return;
+      }
+      if (formData.dateOfBirth && formData.dateOfBirth > new Date()) {
+        Alert.alert('Error', 'Date of birth cannot be in the future');
         return;
       }
 
@@ -137,7 +142,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Profile Details */}
-        <View style={styles.detailsContainer}>
+        <AppCard style={styles.detailsContainer}>
           {/* Name */}
           <View style={styles.fieldRow}>
             <Text style={styles.label}>
@@ -178,7 +183,6 @@ export default function ProfileScreen() {
             onClose={() => setShowDatePicker(false)}
             onSelectDate={handleDateChange}
             selectedDate={formData.dateOfBirth}
-            maxDate={new Date()}
           />
 
           {/* Email */}
@@ -266,7 +270,7 @@ export default function ProfileScreen() {
               <Text style={styles.value}>{profile?.address}</Text>
             )}
           </View>
-        </View>
+        </AppCard>
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>

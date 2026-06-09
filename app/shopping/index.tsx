@@ -5,6 +5,10 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatChip } from "@/components/ui/StatChip";
 import shoppingService from "@/services/shoppingService";
 import { useAppStore } from "@/store/appStore";
 import {
@@ -18,6 +22,7 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -93,8 +98,7 @@ export default function ShoppingScreen() {
   }, [profile]);
 
   const loadShoppingItems = async () => {
-    if (!profile) return;
-    const data = await shoppingService.getShoppingItems(profile.id);
+    const data = await shoppingService.getShoppingItems(profile?.id || "");
     setItems(data);
   };
 
@@ -146,13 +150,13 @@ export default function ShoppingScreen() {
 
   // Submit bulk items to backend
   const handleBulkSubmit = async () => {
-    if (!profile || parsedBulkPreview.length === 0) return;
+    if (parsedBulkPreview.length === 0) return;
 
     try {
       const groupId = `bulk_${Date.now()}`;
       for (const item of parsedBulkPreview) {
         await shoppingService.addShoppingItem({
-          profileID: profile.id,
+          profileID: profile?.id || "",
           name: item.name,
           category: item.category,
           type: "urgent",
@@ -174,7 +178,6 @@ export default function ShoppingScreen() {
 
   // Submit single item add/edit to backend
   const handleSingleSubmit = async () => {
-    if (!profile) return;
     if (!formData.name.trim()) {
       Alert.alert("Error", "Please enter item name");
       return;
@@ -193,7 +196,7 @@ export default function ShoppingScreen() {
         Alert.alert("Success", "Item updated successfully!");
       } else {
         await shoppingService.addShoppingItem({
-          profileID: profile.id,
+          profileID: profile?.id || "",
           name: formData.name,
           category: formData.category,
           type: formData.type,
@@ -376,15 +379,15 @@ export default function ShoppingScreen() {
   // Render standard single card row
   const renderItemCard = (item: ShoppingItem, isInsideFolder = false) => {
     const isExpanded = !!expandedItems[item.id];
-    const borderLeftColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+    const stripeColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
     const prioColor = PRIORITY_COLORS[item.priority || "Medium"];
 
     return (
-      <View
+      <AppCard
         key={item.id}
+        stripeColor={stripeColor}
         style={[
-          styles.itemCard,
-          { borderLeftColor },
+          { paddingVertical: 12, paddingHorizontal: 16, marginBottom: 8 },
           item.isBought && styles.itemCardBought,
           isInsideFolder && styles.nestedFolderItem,
         ]}
@@ -442,7 +445,7 @@ export default function ShoppingScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </AppCard>
     );
   };
 
@@ -451,11 +454,11 @@ export default function ShoppingScreen() {
     const filteredUnboughtItems = getUnboughtFilteredItems();
     if (filteredUnboughtItems.length === 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>🛒</Text>
-          <Text style={styles.emptyText}>No items found</Text>
-          <Text style={styles.emptySubtext}>Expand the panels above to add items to your list</Text>
-        </View>
+        <EmptyState
+          emoji="🛒"
+          title="No items found"
+          subtitle="Expand the panels above to add items to your list"
+        />
       );
     }
 
@@ -544,11 +547,11 @@ export default function ShoppingScreen() {
 
     if (historyItems.length === 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>🕰️</Text>
-          <Text style={styles.emptyText}>Empty history</Text>
-          <Text style={styles.emptySubtext}>Purchased items will stack here</Text>
-        </View>
+        <EmptyState
+          emoji="🕰️"
+          title="Empty history"
+          subtitle="Purchased items will stack here"
+        />
       );
     }
 
@@ -558,9 +561,12 @@ export default function ShoppingScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listScrollContent}
         renderItem={({ item }) => {
-          const borderLeftColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
+          const stripeColor = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Miscellaneous;
           return (
-            <View style={[styles.itemCard, { borderLeftColor }, styles.itemCardBought]}>
+            <AppCard
+              stripeColor={stripeColor}
+              style={[{ paddingVertical: 12, paddingHorizontal: 16, marginBottom: 8 }, styles.itemCardBought]}
+            >
               <View style={styles.itemCardRow}>
                 {/* Checked circle */}
                 <TouchableOpacity
@@ -587,7 +593,7 @@ export default function ShoppingScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </AppCard>
           );
         }}
       />
@@ -600,57 +606,80 @@ export default function ShoppingScreen() {
 
       {/* PREMIUM SOLID BLUE HEADER */}
       <View style={styles.screenHeader}>
-        <TouchableOpacity
-          style={styles.backArrowButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backArrowText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>Shopping</Text>
-          <Text style={styles.headerSubtitleText}>
-            {items.filter((item) => !item.isBought).length} items pending
-          </Text>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity
+            style={styles.backArrowButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backArrowText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitleText}>Shopping</Text>
+            <Text style={styles.headerSubtitleText}>
+              {items.filter((item) => !item.isBought).length} items pending
+            </Text>
+          </View>
         </View>
         
         {/* Header Stats Chips Row */}
         <View style={styles.headerStatsRow}>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{stats.urgentCount}</Text>
-            <Text style={styles.headerStatLabel}>Urgent</Text>
-          </View>
-          <View style={styles.headerStatChip}>
-            <Text style={styles.headerStatCount}>{stats.monthlyCount}</Text>
-            <Text style={styles.headerStatLabel}>Monthly</Text>
-          </View>
+          <StatChip
+            count={stats.urgentCount}
+            label="Urgent"
+            type="danger"
+          />
+          <StatChip
+            count={stats.monthlyCount}
+            label="Monthly"
+            type="info"
+          />
         </View>
       </View>
 
       <View style={styles.appContainer}>
-        {/* INLINE PANELS (Embedded Creation) */}
-        <View style={styles.panelsContainer}>
-          
-          {/* Panel 1: Quick Add Card */}
-          <View style={[styles.inlinePanelCard, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
-            <TouchableOpacity 
-              style={styles.panelHeaderRow} 
-              onPress={() => {
-                setShowQuickAdd(!showQuickAdd);
-                setShowBulkAdd(false);
-                if (editingItem) handleCancelEdit();
-              }}
-            >
-              <View style={styles.panelHeaderLeft}>
-                <Text style={styles.panelIcon}>⚡</Text>
-                <Text style={styles.panelTitle}>
+        {/* ACTION BUTTONS ROW */}
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}
+            onPress={() => {
+              setShowQuickAdd(true);
+              setShowBulkAdd(false);
+            }}
+          >
+            <Text style={[styles.actionBtnText, { color: COLOR_BLUE }]}>⚡ Quick Add</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" }]}
+            onPress={() => {
+              setShowBulkAdd(true);
+              setShowQuickAdd(false);
+            }}
+          >
+            <Text style={[styles.actionBtnText, { color: "#7C3AED" }]}>📝 Bulk Add</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Add Modal */}
+        <Modal
+          visible={showQuickAdd}
+          transparent
+          animationType="slide"
+          onRequestClose={handleCancelEdit}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>
                   {editingItem ? "Edit Item Details" : "Quick Add Item"}
                 </Text>
+                <TouchableOpacity onPress={handleCancelEdit} style={styles.modalCloseBtn}>
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.chevronIconText}>{showQuickAdd ? "▲" : "▼"}</Text>
-            </TouchableOpacity>
-
-            {showQuickAdd && (
-              <View style={styles.panelContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+                {/* Form Content */}
                 {/* 1. Item Name Input */}
                 <Text style={styles.formLabel}>Item Name</Text>
                 <TextInput
@@ -784,14 +813,12 @@ export default function ShoppingScreen() {
 
                 {/* Buttons */}
                 <View style={styles.formButtonsRow}>
-                  {editingItem && (
-                    <TouchableOpacity
-                      style={[styles.formSubmitButton, styles.formCancelButton]}
-                      onPress={handleCancelEdit}
-                    >
-                      <Text style={styles.formCancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.formSubmitButton, styles.formCancelButton]}
+                    onPress={handleCancelEdit}
+                  >
+                    <Text style={styles.formCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.formSubmitButton, { backgroundColor: COLOR_BLUE }]}
                     onPress={handleSingleSubmit}
@@ -801,29 +828,39 @@ export default function ShoppingScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            )}
+              </ScrollView>
+            </View>
           </View>
+        </Modal>
 
-          {/* Panel 2: Bulk Add Card */}
-          <View style={[styles.inlinePanelCard, { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" }]}>
-            <TouchableOpacity 
-              style={styles.panelHeaderRow} 
-              onPress={() => {
-                setShowBulkAdd(!showBulkAdd);
-                setShowQuickAdd(false);
-                if (editingItem) handleCancelEdit();
-              }}
-            >
-              <View style={styles.panelHeaderLeft}>
-                <Text style={styles.panelIcon}>📝</Text>
-                <Text style={styles.panelTitle}>Bulk Add List</Text>
+        {/* Bulk Add Modal */}
+        <Modal
+          visible={showBulkAdd}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            setShowBulkAdd(false);
+            setBulkItemsText("");
+            setParsedBulkPreview([]);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>Bulk Add List</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowBulkAdd(false);
+                    setBulkItemsText("");
+                    setParsedBulkPreview([]);
+                  }}
+                  style={styles.modalCloseBtn}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.chevronIconText}>{showBulkAdd ? "▲" : "▼"}</Text>
-            </TouchableOpacity>
-
-            {showBulkAdd && (
-              <View style={styles.panelContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
                 <Text style={styles.formLabel}>Enter Items List</Text>
                 <TextInput
                   style={styles.bulkTextarea}
@@ -866,44 +903,48 @@ export default function ShoppingScreen() {
                 )}
 
                 {/* Submit bulk items */}
-                <TouchableOpacity
-                  style={[
-                    styles.formSubmitButton,
-                    { backgroundColor: "#7C3AED" },
-                    parsedBulkPreview.length === 0 && { opacity: 0.5 },
-                  ]}
-                  disabled={parsedBulkPreview.length === 0}
-                  onPress={handleBulkSubmit}
-                >
-                  <Text style={styles.formSubmitButtonText}>
-                    Add {parsedBulkPreview.length} Items
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                <View style={styles.formButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.formSubmitButton, styles.formCancelButton]}
+                    onPress={() => {
+                      setShowBulkAdd(false);
+                      setBulkItemsText("");
+                      setParsedBulkPreview([]);
+                    }}
+                  >
+                    <Text style={styles.formCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.formSubmitButton,
+                      { backgroundColor: "#7C3AED" },
+                      parsedBulkPreview.length === 0 && { opacity: 0.5 },
+                    ]}
+                    disabled={parsedBulkPreview.length === 0}
+                    onPress={handleBulkSubmit}
+                  >
+                    <Text style={styles.formSubmitButtonText}>
+                      Add {parsedBulkPreview.length} Items
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
           </View>
-
-        </View>
+        </Modal>
 
         {/* Segmented Filter Bar Selector */}
-        <View style={styles.filterBarContainer}>
-          <View style={styles.filterContainer}>
-            {["all", "urgent", "monthly", "history"].map((type) => {
-              const isActive = filterType === type;
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.filterPill, isActive && styles.filterPillActive]}
-                  onPress={() => setFilterType(type as any)}
-                >
-                  <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
+        <SegmentedControl
+          tabs={[
+            { id: "all", label: "All" },
+            { id: "urgent", label: "Urgent" },
+            { id: "monthly", label: "Monthly" },
+            { id: "history", label: "History" },
+          ]}
+          activeTab={filterType}
+          onChange={(id) => setFilterType(id as any)}
+          style={{ marginHorizontal: 16, marginBottom: 12 }}
+        />
 
         {/* List Stacks content */}
         <View style={{ flex: 1 }}>
@@ -935,8 +976,13 @@ const styles = StyleSheet.create({
   screenHeader: {
     backgroundColor: COLOR_BLUE,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 16,
     paddingHorizontal: 20,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
+  },
+  headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
   },
@@ -989,10 +1035,68 @@ const styles = StyleSheet.create({
   },
 
   // Inline expanding cards style
-  panelsContainer: {
+  actionButtonsRow: {
+    flexDirection: "row",
     paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 10,
+    paddingVertical: 12,
+    gap: 12,
+    backgroundColor: COLOR_CARD,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLOR_BORDER,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: COLOR_CARD,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 30,
+    maxHeight: "85%",
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: "#9CA3AF",
+    fontWeight: "500",
   },
   inlinePanelCard: {
     borderWidth: 0.5,

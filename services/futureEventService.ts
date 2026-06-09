@@ -3,8 +3,12 @@
 // Handles future event data with backend API
 // ============================================
 
-import { FutureEvent } from "@/types";
+import { FutureEvent, ReminderOption } from "@/types";
 import api from "@/utils/api";
+import {
+  cancelNotifications,
+  scheduleEventReminders,
+} from "@/utils/notifications";
 
 class FutureEventService {
   // ============================================
@@ -46,14 +50,15 @@ class FutureEventService {
       );
       const response = await api.post("/events", eventData);
       console.log("🟢 Event added successfully:", response.data);
-      const newEvent = {
+      const newEvent: FutureEvent = {
         ...response.data,
         id: String(response.data._id || response.data.id),
         _id: undefined,
       };
 
-      // Schedule reminders based on reminderOptions
-      await this.scheduleReminders(newEvent);
+      // Schedule reminders and persist notification IDs
+      const notificationIds = await this.scheduleReminders(newEvent);
+      newEvent.notificationIds = notificationIds;
 
       return newEvent;
     } catch (error: any) {
@@ -75,15 +80,25 @@ class FutureEventService {
   ): Promise<FutureEvent | null> {
     try {
       const response = await api.put(`/events/${eventId}`, updates);
-      const updatedEvent = {
+      const updatedEvent: FutureEvent = {
         ...response.data,
         id: String(response.data._id || response.data.id),
         _id: undefined,
       };
 
-      // Reschedule reminders if needed
+      // Reschedule reminders when date or reminder options change
       if (updates.reminderOptions || updates.eventDate) {
-        await this.scheduleReminders(updatedEvent);
+        // Cancel previously-scheduled notifications for this event
+        const oldIds: string[] = updatedEvent.notificationIds || [];
+        if (oldIds.length > 0) {
+          await cancelNotifications(oldIds);
+          console.log(
+            `[FutureEventService] Cancelled ${oldIds.length} old notification(s) for event ${eventId}`,
+          );
+        }
+
+        const newIds = await this.scheduleReminders(updatedEvent);
+        updatedEvent.notificationIds = newIds;
       }
 
       return updatedEvent;
@@ -99,11 +114,17 @@ class FutureEventService {
   // ============================================
   async deleteEvent(eventId: string): Promise<boolean> {
     try {
+      // Fetch current event to retrieve stored notification IDs before deletion
+      const events = await this.getFutureEvents();
+      const target = events.find((e) => e.id === eventId);
+      if (target?.notificationIds && target.notificationIds.length > 0) {
+        await cancelNotifications(target.notificationIds);
+        console.log(
+          `[FutureEventService] Cancelled ${target.notificationIds.length} notification(s) for deleted event ${eventId}`,
+        );
+      }
+
       await api.delete(`/events/${eventId}`);
-
-      // Cancel scheduled notifications for this event
-      // TODO: Implement notification cancellation
-
       return true;
     } catch (error: any) {
       console.error("Error deleting event:", error);
@@ -151,41 +172,32 @@ class FutureEventService {
   }
 
   // ============================================
-  // SCHEDULE REMINDERS
+  // SCHEDULE REMINDERS (real implementation)
+  // Returns array of scheduled notification IDs.
   // ============================================
-  private async scheduleReminders(event: FutureEvent): Promise<void> {
+  private async scheduleReminders(event: FutureEvent): Promise<string[]> {
     try {
-      const eventDate = new Date(event.eventDate);
-
-      for (const reminderOption of event.reminderOptions) {
-        let reminderDate: Date;
-
-        switch (reminderOption) {
-          case "1_week_before":
-            reminderDate = new Date(eventDate);
-            reminderDate.setDate(reminderDate.getDate() - 7);
-            break;
-          case "1_day_before":
-            reminderDate = new Date(eventDate);
-            reminderDate.setDate(reminderDate.getDate() - 1);
-            break;
-          case "same_day":
-            reminderDate = new Date(eventDate);
-            break;
-          default:
-            continue;
-        }
-
-        // TODO: Schedule actual notification using expo-notifications
-        console.log(`Scheduled reminder for ${event.title} at ${reminderDate}`);
+      if (!event.reminderOptions || event.reminderOptions.length === 0) {
+        return [];
       }
 
-      // If sendReminderToSpouse is true, also send to spouse
-      if (event.sendReminderToSpouse) {
-        console.log(`Will send reminder to spouse for ${event.title}`);
-      }
+      const ids = await scheduleEventReminders(
+        event.title,
+        event.type,
+        event.eventDate,
+        event.id,
+        event.reminderOptions as ReminderOption[],
+        event.isRecurringYearly,
+      );
+
+      console.log(
+        `[FutureEventService] Scheduled ${ids.length} notification(s) for "${event.title}": ${ids.join(", ")}`,
+      );
+
+      return ids;
     } catch (error) {
       console.error("Error scheduling reminders:", error);
+      return [];
     }
   }
 

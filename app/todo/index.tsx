@@ -6,6 +6,9 @@
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
+import { AppCard } from "@/components/ui/AppCard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState, LoadingState } from "@/components/ui/States";
 import todoService from "@/services/todoService";
 import {
     RecurrencePattern,
@@ -435,200 +438,188 @@ export default function ToDoScreen() {
     const subtaskPct = totalSubtasks > 0 ? (completedSubtasks / totalSubtasks) * 100 : 0;
 
     return (
-      <View
+      <AppCard
         key={task.id}
-        style={[
-          styles.card,
-          task.isCompleted && styles.completedCardOpacity,
-        ]}
+        stripeColor={PRIORITY_COLORS[task.priority]}
+        style={task.isCompleted ? styles.completedCardOpacity : undefined}
       >
-        {/* Left Side Priority Border Strip */}
-        <View
-          style={[
-            styles.priorityBar,
-            { backgroundColor: PRIORITY_COLORS[task.priority] },
-          ]}
-        />
+        <View style={styles.cardHeader}>
+          <TouchableOpacity
+            onPress={() => toggleCompletion(task)}
+            style={styles.checkbox}
+          >
+            <MaterialCommunityIcons
+              name={
+                task.isCompleted
+                  ? "checkbox-marked-circle"
+                  : "checkbox-blank-circle-outline"
+              }
+              size={24}
+              color={task.isCompleted ? "#10B981" : "#9CA3AF"}
+            />
+          </TouchableOpacity>
 
-        <View style={styles.cardMain}>
-          <View style={styles.cardHeader}>
-            <TouchableOpacity
-              onPress={() => toggleCompletion(task)}
-              style={styles.checkbox}
+          <View style={styles.taskInfo}>
+            <Text
+              style={[
+                styles.taskTitle,
+                task.isCompleted && styles.taskTitleCompleted,
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
             >
-              <MaterialCommunityIcons
-                name={
-                  task.isCompleted
-                    ? "checkbox-marked-circle"
-                    : "checkbox-blank-circle-outline"
-                }
-                size={24}
-                color={task.isCompleted ? "#10B981" : "#9CA3AF"}
-              />
-            </TouchableOpacity>
-
-            <View style={styles.taskInfo}>
-              <Text
-                style={[
-                  styles.taskTitle,
-                  task.isCompleted && styles.taskTitleCompleted,
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {task.title}
-              </Text>
-              
-              <View style={styles.taskMeta}>
-                {/* Priority Indicator Dot & Label */}
-                <View style={styles.metaRow}>
-                  <View
-                    style={[
-                      styles.priorityDot,
-                      { backgroundColor: PRIORITY_COLORS[task.priority] },
-                    ]}
-                  />
-                  <Text style={styles.metaLabelText}>{task.priority}</Text>
-                </View>
-
-                {/* Category tag */}
-                <View style={styles.metaRow}>
-                  <Text style={styles.categoryIconText}>
-                    {CATEGORY_ICONS[task.category]}
-                  </Text>
-                  <Text style={styles.metaLabelText}>{task.category}</Text>
-                </View>
-
-                {/* Due Date tag */}
-                {dueDate && (
-                  <View style={styles.metaRow}>
-                    <MaterialCommunityIcons name="calendar" size={12} color="#6B7280" />
-                    <Text style={[styles.metaLabelText, overdueCount > 0 && !task.isCompleted && styles.overdueDateText]}>
-                      {dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                    </Text>
-                  </View>
-                )}
+              {task.title}
+            </Text>
+            
+            <View style={styles.taskMeta}>
+              {/* Priority Indicator Dot & Label */}
+              <View style={styles.metaRow}>
+                <View
+                  style={[
+                    styles.priorityDot,
+                    { backgroundColor: PRIORITY_COLORS[task.priority] },
+                  ]}
+                />
+                <Text style={styles.metaLabelText}>{task.priority}</Text>
               </View>
-            </View>
 
-            {/* Chevron toggle */}
-            <TouchableOpacity
-              onPress={() => setExpandedTaskId(isExpanded ? null : task.id)}
-              style={styles.chevron}
-            >
-              <MaterialCommunityIcons
-                name={isExpanded ? "chevron-down" : "chevron-right"}
-                size={22}
-                color="#6B7280"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Collapsible Accordion details */}
-          {isExpanded && (
-            <View style={styles.cardBody}>
-              {task.description ? (
-                <Text style={styles.descriptionText}>{task.description}</Text>
-              ) : null}
-
-              {/* Subtasks visual section */}
-              <View style={styles.subtasksHeaderRow}>
-                <Text style={styles.subtasksTitle}>Subtasks</Text>
-                <Text style={styles.subtaskRatioText}>
-                  {completedSubtasks} of {totalSubtasks} completed
+              {/* Category tag */}
+              <View style={styles.metaRow}>
+                <Text style={styles.categoryIconText}>
+                  {CATEGORY_ICONS[task.category]}
                 </Text>
+                <Text style={styles.metaLabelText}>{task.category}</Text>
               </View>
 
-              {/* Subtask real-time progress bar */}
-              <View style={styles.subtaskProgressContainer}>
-                <View style={styles.subtaskProgressTrack}>
-                  <View
-                    style={[
-                      styles.subtaskProgressFill,
-                      { width: `${subtaskPct}%` },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {/* Subtask items list */}
-              {totalSubtasks > 0 && (
-                <View style={styles.subtaskListContainer}>
-                  {task.subtasks?.map((subtask) => (
-                    <View key={subtask._id} style={styles.subtaskRow}>
-                      <TouchableOpacity
-                        onPress={() => toggleSubtask(task.id, subtask._id!)}
-                      >
-                        <MaterialCommunityIcons
-                          name={
-                            subtask.isCompleted
-                              ? "checkbox-marked"
-                              : "checkbox-blank-outline"
-                          }
-                          size={18}
-                          color={subtask.isCompleted ? "#10B981" : "#9CA3AF"}
-                        />
-                      </TouchableOpacity>
-                      <Text
-                        style={[
-                          styles.subtaskTitleText,
-                          subtask.isCompleted && styles.subtaskTitleCompleted,
-                        ]}
-                      >
-                        {subtask.title}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => deleteSubtask(task.id, subtask._id!)}
-                        style={styles.subtaskDeleteButton}
-                      >
-                        <MaterialCommunityIcons
-                          name="close-circle-outline"
-                          size={16}
-                          color="#EF4444"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+              {/* Due Date tag */}
+              {dueDate && (
+                <View style={styles.metaRow}>
+                  <MaterialCommunityIcons name="calendar" size={12} color="#6B7280" />
+                  <Text style={[styles.metaLabelText, overdueCount > 0 && !task.isCompleted && styles.overdueDateText]}>
+                    {dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </Text>
                 </View>
               )}
+            </View>
+          </View>
 
-              {/* Add subtask bar */}
-              <View style={styles.addSubtaskContainer}>
-                <TextInput
-                  style={styles.subtaskInput}
-                  placeholder="Add new subtask..."
-                  value={subtaskInput}
-                  onChangeText={setSubtaskInput}
+          {/* Chevron toggle */}
+          <TouchableOpacity
+            onPress={() => setExpandedTaskId(isExpanded ? null : task.id)}
+            style={styles.chevron}
+          >
+            <MaterialCommunityIcons
+              name={isExpanded ? "chevron-down" : "chevron-right"}
+              size={22}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Collapsible Accordion details */}
+        {isExpanded && (
+          <View style={styles.cardBody}>
+            {task.description ? (
+              <Text style={styles.descriptionText}>{task.description}</Text>
+            ) : null}
+
+            {/* Subtasks visual section */}
+            <View style={styles.subtasksHeaderRow}>
+              <Text style={styles.subtasksTitle}>Subtasks</Text>
+              <Text style={styles.subtaskRatioText}>
+                {completedSubtasks} of {totalSubtasks} completed
+              </Text>
+            </View>
+
+            {/* Subtask real-time progress bar */}
+            <View style={styles.subtaskProgressContainer}>
+              <View style={styles.subtaskProgressTrack}>
+                <View
+                  style={[
+                    styles.subtaskProgressFill,
+                    { width: `${subtaskPct}%` },
+                  ]}
                 />
-                <TouchableOpacity
-                  style={styles.subtaskAddBtn}
-                  onPress={() => addSubtask(task.id)}
-                >
-                  <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-
-              {/* Detailed Actions Footer */}
-              <View style={styles.cardActionsContainer}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.editActionBtn]}
-                  onPress={() => openEditModal(task)}
-                >
-                  <MaterialCommunityIcons name="pencil-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.deleteActionBtn]}
-                  onPress={() => deleteTask(task)}
-                >
-                  <MaterialCommunityIcons name="trash-can-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Delete</Text>
-                </TouchableOpacity>
               </View>
             </View>
-          )}
-        </View>
-      </View>
+
+            {/* Subtask items list */}
+            {totalSubtasks > 0 && (
+              <View style={styles.subtaskListContainer}>
+                {task.subtasks?.map((subtask) => (
+                  <View key={subtask._id} style={styles.subtaskRow}>
+                    <TouchableOpacity
+                      onPress={() => toggleSubtask(task.id, subtask._id!)}
+                    >
+                      <MaterialCommunityIcons
+                        name={
+                          subtask.isCompleted
+                            ? "checkbox-marked"
+                            : "checkbox-blank-outline"
+                        }
+                        size={18}
+                        color={subtask.isCompleted ? "#10B981" : "#9CA3AF"}
+                      />
+                    </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.subtaskTitleText,
+                        subtask.isCompleted && styles.subtaskTitleCompleted,
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => deleteSubtask(task.id, subtask._id!)}
+                      style={styles.subtaskDeleteButton}
+                    >
+                      <MaterialCommunityIcons
+                        name="close-circle-outline"
+                        size={16}
+                        color="#EF4444"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Add subtask bar */}
+            <View style={styles.addSubtaskContainer}>
+              <TextInput
+                style={styles.subtaskInput}
+                placeholder="Add new subtask..."
+                value={subtaskInput}
+                onChangeText={setSubtaskInput}
+              />
+              <TouchableOpacity
+                style={styles.subtaskAddBtn}
+                onPress={() => addSubtask(task.id)}
+              >
+                <MaterialCommunityIcons name="plus" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Detailed Actions Footer */}
+            <View style={styles.cardActionsContainer}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.editActionBtn]}
+                onPress={() => openEditModal(task)}
+              >
+                <MaterialCommunityIcons name="pencil-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.deleteActionBtn]}
+                onPress={() => deleteTask(task)}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </AppCard>
     );
   };
 
@@ -645,7 +636,7 @@ export default function ToDoScreen() {
             <View style={styles.headerTopRow}>
               <View style={styles.greetingSection}>
                 <Text style={styles.greetingTitle}>Your Productivity</Text>
-                <Text style={styles.greetingSubtitle}>Let's check off your tasks!</Text>
+                <Text style={styles.greetingSubtitle}>{"Let's"} check off your tasks!</Text>
               </View>
               
               {/* Dynamic Progress Ring */}
@@ -675,27 +666,15 @@ export default function ToDoScreen() {
           </View>
 
           {/* Segmented Filter Bar Selector */}
-          <View style={styles.filterContainer}>
-            {(["pending", "completed", "all"] as TabType[]).map((tab) => {
-              const isActive = activeTab === tab;
-              let label = "";
-              if (tab === "pending") label = "Pending";
-              else if (tab === "completed") label = "Completed";
-              else label = "All Tasks";
-
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.filterPill, isActive && styles.filterPillActive]}
-                  onPress={() => setActiveTab(tab)}
-                >
-                  <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <SegmentedControl
+            tabs={[
+              { id: "pending", label: "Pending" },
+              { id: "completed", label: "Completed" },
+              { id: "all", label: "All Tasks" },
+            ]}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as TabType)}
+          />
 
           {/* Inline Task Composer Card */}
           <View style={styles.composerCard}>
@@ -753,15 +732,13 @@ export default function ToDoScreen() {
 
           {/* Content Loading & Section Feed */}
           {loading && tasks.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#3B82F6" />
-            </View>
+            <LoadingState />
           ) : tasks.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>✨</Text>
-              <Text style={styles.emptyText}>All clear!</Text>
-              <Text style={styles.emptySubtext}>Type a task above and tap the up arrow to start.</Text>
-            </View>
+            <EmptyState
+              emoji="✨"
+              title="All clear!"
+              subtitle="Type a task above and tap the up arrow to start."
+            />
           ) : (
             <View style={styles.feedContainer}>
               {/* 1. Pending Tab View */}
@@ -777,11 +754,11 @@ export default function ToDoScreen() {
                   )}
                   {renderGroupSection("No Date", noDatePendingTasks, "#F3F4F6", "#6B7280")}
                   {pendingCount === 0 && (
-                    <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyIcon}>🎉</Text>
-                      <Text style={styles.emptyText}>No pending tasks</Text>
-                      <Text style={styles.emptySubtext}>Create some tasks or check the Completed tab.</Text>
-                    </View>
+                    <EmptyState
+                      emoji="🎉"
+                      title="No pending tasks"
+                      subtitle="Create some tasks or check the Completed tab."
+                    />
                   )}
                 </>
               )}
@@ -791,11 +768,11 @@ export default function ToDoScreen() {
                 <>
                   {renderGroupSection("Completed", completedTasks, "#D1FAE5", "#10B981")}
                   {doneCount === 0 && (
-                    <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyIcon}>⬜</Text>
-                      <Text style={styles.emptyText}>No completed tasks</Text>
-                      <Text style={styles.emptySubtext}>Finish some tasks to see them highlighted here.</Text>
-                    </View>
+                    <EmptyState
+                      emoji="⬜"
+                      title="No completed tasks"
+                      subtitle="Finish some tasks to see them highlighted here."
+                    />
                   )}
                 </>
               )}

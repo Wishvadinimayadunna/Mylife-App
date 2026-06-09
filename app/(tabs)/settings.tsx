@@ -12,6 +12,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -44,7 +45,10 @@ export default function SettingsScreen() {
   const [loadingPartner, setLoadingPartner] = useState(true);
 
   useEffect(() => {
-    fetchPartnerStatus();
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchPartnerStatus();
+    });
+    return () => task.cancel();
   }, []);
 
   const fetchPartnerStatus = async () => {
@@ -135,7 +139,16 @@ export default function SettingsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.navigate("/(tabs)");
+            }
+          }}
+        >
           <Text style={styles.backBtnTxt}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -216,7 +229,7 @@ export default function SettingsScreen() {
             ) : (
               /* Not linked yet */
               <View style={{ marginTop: 14, gap: 10 }}>
-                <Text style={styles.inputLabel}>Partner's email address</Text>
+                <Text style={styles.inputLabel}>{"Partner's email address"}</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="partner@example.com"

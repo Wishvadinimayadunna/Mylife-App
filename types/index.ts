@@ -47,6 +47,7 @@ export interface FamilyMember {
   email?: string;
   address?: string;
   birthdayReminderEnabled: boolean;
+  notificationIds?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,9 +91,11 @@ export interface MedicalAppointment {
   doctorName: string;
   appointmentDate: Date;
   appointmentTime: string;
+  reason?: string;
   notes?: string;
   reminderEnabled: boolean;
   reminderTime?: Date;
+  prescription?: { medicineName: string; dosage?: string }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -354,6 +357,8 @@ export interface FutureEvent {
   sendReminderToSpouse: boolean;
   isShared: boolean;
   isRecurringYearly: boolean; // For birthdays/anniversaries
+  /** IDs of scheduled expo-notifications — used for cancellation on edit/delete */
+  notificationIds?: string[];
   createdAt: Date | string;
   updatedAt: Date | string;
   completedAt?: Date | string;

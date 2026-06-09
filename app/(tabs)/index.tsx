@@ -4,7 +4,9 @@
 // ============================================
 
 import familyService from "@/services/familyService";
+import financeService from "@/services/financeService";
 import futureEventService from "@/services/futureEventService";
+import healthService from "@/services/healthService";
 import profileService from "@/services/profileService";
 import shoppingService from "@/services/shoppingService";
 import todoService from "@/services/todoService";
@@ -12,8 +14,8 @@ import utilityService from "@/services/utilityService";
 import { useAppStore } from "@/store/appStore";
 import { FutureEvent } from "@/types";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Platform,
   ScrollView,
@@ -87,7 +89,7 @@ const SECTIONS = [
     color: "#F97316",
     bg: "#FFEDD5",
     route: "/finance",
-    staticLabel: "0 bills",
+    staticLabel: "Rs. 0",
   },
   {
     id: "future-event",
@@ -142,12 +144,16 @@ export default function HomeScreen() {
     shopping: 0,
     familyCount: 0,
     unpaidBills: 0,
+    netBalance: 0,
+    healthScore: 0,
   });
   const [upcomingEvents, setUpcomingEvents] = useState<FutureEvent[]>([]);
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      initializeApp();
+    }, [])
+  );
 
   const initializeApp = async () => {
     if (isInitialized) {
@@ -176,14 +182,29 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      const [pendingTasks, unpaidBills, allEvents, shoppingItems, family] =
-        await Promise.all([
-          todoService.getPendingTasks(),
-          utilityService.getUnpaidBills(),
-          futureEventService.getFutureEvents(),
-          shoppingService.getShoppingItems(""),
-          familyService.getFamilyMembers(""),
-        ]);
+      const [
+        pendingTasks,
+        unpaidBills,
+        allEvents,
+        shoppingItems,
+        family,
+        transactions,
+        waterLogs,
+        sleepLogs,
+        medicines,
+        moods
+      ] = await Promise.all([
+        todoService.getPendingTasks(),
+        utilityService.getUnpaidBills(),
+        futureEventService.getFutureEvents(),
+        shoppingService.getShoppingItems(""),
+        familyService.getFamilyMembers(""),
+        financeService.getTransactions(profile?.id || ""),
+        healthService.getWaterLogs().catch(() => []),
+        healthService.getSleepLogs().catch(() => []),
+        healthService.getMedicineReminders().catch(() => []),
+        healthService.getMoods().catch(() => []),
+      ]);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -202,12 +223,36 @@ export default function HomeScreen() {
 
       setUpcomingEvents(upcoming.slice(0, 2));
 
+      const netBalance = transactions.reduce((acc, t) => {
+        return t.type === "income" ? acc + t.amount : acc - t.amount;
+      }, 0);
+
+      // Compute health wellness score
+      const todayStr = new Date().toISOString().split("T")[0];
+      const todayDate = new Date();
+
+      const todayWater = waterLogs.filter((l: any) => new Date(l.recordedAt || l.createdAt).toDateString() === todayDate.toDateString()).reduce((s: number, l: any) => s + l.amountML, 0);
+      const todaySleep = sleepLogs.filter((l: any) => new Date(l.recordedAt || l.createdAt).toDateString() === todayDate.toDateString()).reduce((_: any, l: any) => l.durationHours, 0);
+      const enabledMeds = medicines.filter((m: any) => m.isEnabled);
+      const medsTaken = enabledMeds.filter((m: any) => m.takenDates?.includes(todayStr)).length;
+      const medsCompliance = enabledMeds.length > 0 ? medsTaken / enabledMeds.length : 0;
+      const moodToday = moods.find((m: any) => new Date(m.recordDate || m.createdAt).toDateString() === todayDate.toDateString());
+      
+      const healthScore = Math.round(
+        Math.min(todayWater / 2000, 1) * 25 +
+        (todaySleep > 0 ? Math.min(todaySleep / 8, 1) * 25 : 0) +
+        medsCompliance * 25 +
+        (moodToday ? 25 : 0)
+      );
+
       setStats({
         tasks: pendingTasks.length,
         events: upcoming.length,
         shopping: shoppingItems.filter((i) => !i.isBought).length,
         familyCount: family.length,
         unpaidBills: unpaidBills.length,
+        netBalance,
+        healthScore,
       });
     } catch (err) {
       console.error("loadData error:", err);
@@ -217,12 +262,16 @@ export default function HomeScreen() {
   // Build sub-labels per section
   const getSubLabel = (id: string, staticLabel: string): string => {
     switch (id) {
+      case "profile":
+        return profile?.fullName || "Setup profile";
       case "family":
         return stats.familyCount === 1
           ? "1 member"
           : `${stats.familyCount} members`;
       case "shopping":
         return stats.shopping === 1 ? "1 item" : `${stats.shopping} items`;
+      case "health":
+        return `Score: ${stats.healthScore}/100`;
       case "utility":
         return stats.unpaidBills === 0
           ? "All paid"
@@ -233,8 +282,11 @@ export default function HomeScreen() {
           : `${stats.tasks} pending`;
       case "future-event":
         return stats.events === 0
-          ? "Plan ahead"
+          ? "0 upcoming"
           : `${stats.events} upcoming`;
+      case "finance":
+        const formattedBal = Math.abs(stats.netBalance).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        return stats.netBalance >= 0 ? `Rs. ${formattedBal}` : `-Rs. ${formattedBal}`;
       default:
         return staticLabel;
     }
@@ -256,7 +308,7 @@ export default function HomeScreen() {
           {/* Avatar */}
           <TouchableOpacity
             style={styles.avatarWrap}
-            onPress={() => router.push("/settings")}
+            onPress={() => router.navigate("/settings")}
             activeOpacity={0.7}
           >
             <Text style={styles.avatarText}>{initials}</Text>
@@ -267,7 +319,7 @@ export default function HomeScreen() {
           <Text style={styles.heroGreeting}>
             {getGreeting()}, {firstName} 👋
           </Text>
-          <Text style={styles.heroSub}>Here's what's on your plate today.</Text>
+          <Text style={styles.heroSub}>{"Here's what's on your plate today."}</Text>
 
           {/* Stat chips */}
           <View style={styles.chipRow}>

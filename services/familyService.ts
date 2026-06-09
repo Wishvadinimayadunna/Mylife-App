@@ -6,7 +6,7 @@
 import { FamilyMember } from "@/types";
 import api from "@/utils/api";
 import {
-    cancelNotification,
+    cancelNotifications,
     scheduleBirthdayReminder,
 } from "@/utils/notifications";
 
@@ -40,18 +40,23 @@ class FamilyService {
       // Remove profileID as backend uses userId from auth token
       const { profileID, ...dataToSend } = memberData as any;
       const response = await api.post("/family", dataToSend);
-      const newMember = {
+      const newMember: FamilyMember = {
         ...response.data,
         id: response.data._id || response.data.id,
       };
 
       // Schedule birthday reminder if enabled
       if (newMember.birthdayReminderEnabled) {
-        await scheduleBirthdayReminder(
+        const notificationIds = await scheduleBirthdayReminder(
           newMember.fullName,
           newMember.dateOfBirth,
           newMember.id,
         );
+        if (notificationIds.length > 0) {
+          // Persist the scheduled notification IDs back to the database
+          await api.put(`/family/${newMember.id}`, { notificationIds });
+          newMember.notificationIds = notificationIds;
+        }
       }
 
       return newMember;
@@ -74,23 +79,53 @@ class FamilyService {
     updates: Partial<FamilyMember>,
   ): Promise<FamilyMember | null> {
     try {
-      const response = await api.put(`/family/${memberId}`, updates);
-      const updatedMember = response.data;
+      // Check if fields affecting the birthday notification are changed
+      const shouldReschedule =
+        updates.birthdayReminderEnabled !== undefined ||
+        updates.dateOfBirth !== undefined ||
+        updates.fullName !== undefined;
 
-      // Update birthday reminder if changed
-      if (updates.birthdayReminderEnabled !== undefined) {
-        if (updatedMember.birthdayReminderEnabled) {
-          await scheduleBirthdayReminder(
-            updatedMember.fullName,
-            updatedMember.dateOfBirth,
-            updatedMember.id,
-          );
-        } else {
-          await cancelNotification(updatedMember.id);
+      let oldNotificationIds: string[] = [];
+
+      if (shouldReschedule) {
+        try {
+          const existingResponse = await api.get(`/family/${memberId}`);
+          oldNotificationIds = existingResponse.data?.notificationIds || [];
+        } catch (err) {
+          console.warn("[FamilyService] Could not fetch existing member for notification cleanup:", err);
         }
       }
 
-      return updatedMember;
+      const response = await api.put(`/family/${memberId}`, updates);
+      const updatedMember = response.data;
+
+      // Handle birthday notification updates
+      if (shouldReschedule) {
+        // 1. Cancel old notifications
+        if (oldNotificationIds.length > 0) {
+          await cancelNotifications(oldNotificationIds);
+        }
+
+        // 2. Schedule new notifications if enabled
+        if (updatedMember.birthdayReminderEnabled) {
+          const newNotificationIds = await scheduleBirthdayReminder(
+            updatedMember.fullName,
+            updatedMember.dateOfBirth,
+            updatedMember._id || updatedMember.id,
+          );
+          await api.put(`/family/${memberId}`, { notificationIds: newNotificationIds });
+          updatedMember.notificationIds = newNotificationIds;
+        } else {
+          // Explicitly clear notification IDs from DB
+          await api.put(`/family/${memberId}`, { notificationIds: [] });
+          updatedMember.notificationIds = [];
+        }
+      }
+
+      return {
+        ...updatedMember,
+        id: updatedMember._id || updatedMember.id,
+      };
     } catch (error: any) {
       console.error("Error editing family member:", error);
       const message =
@@ -104,10 +139,20 @@ class FamilyService {
   // ============================================
   async deleteFamilyMember(memberId: string): Promise<boolean> {
     try {
+      let notificationIds: string[] = [];
+      try {
+        const existingResponse = await api.get(`/family/${memberId}`);
+        notificationIds = existingResponse.data?.notificationIds || [];
+      } catch (err) {
+        console.warn("[FamilyService] Could not fetch family member to clean notifications before delete:", err);
+      }
+
       await api.delete(`/family/${memberId}`);
 
       // Cancel any scheduled reminders
-      await cancelNotification(memberId);
+      if (notificationIds.length > 0) {
+        await cancelNotifications(notificationIds);
+      }
 
       return true;
     } catch (error: any) {

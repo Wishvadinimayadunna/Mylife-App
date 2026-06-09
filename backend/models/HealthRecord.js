@@ -12,10 +12,18 @@ const medicalAppointmentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   doctorName: { type: String, required: true },
   appointmentDate: { type: Date, required: true },
-  appointmentTime: { type: String, required: true },
+  appointmentTime: { type: String, default: "" },
+  reason: { type: String },
   notes: { type: String },
   reminderEnabled: { type: Boolean, default: true },
   reminderTime: { type: Date },
+  // Prescription medicines from this visit
+  prescription: [
+    {
+      medicineName: { type: String, required: true },
+      dosage: { type: String },
+    },
+  ],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
