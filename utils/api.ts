@@ -15,7 +15,7 @@ const getApiBaseUrl = () => {
     return `http://${ip}:5000/api`;
   }
   // Fallback to the current local Wi-Fi IP address
-  return "http://10.237.231.15:5000/api";
+  return "http://172.25.6.15:5000/api";
 };
 
 const API_BASE_URL = getApiBaseUrl();

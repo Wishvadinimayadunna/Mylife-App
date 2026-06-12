@@ -2,6 +2,8 @@
 // Future Event Module - Event Management
 // Redesigned with ToDo theme, permanent action cards,
 // live preview parser, segmented filters, and expandable items.
+// v2: Bilingual voice (Sinhala + English), 3-layer finalization gate,
+//     Guided Voice Builder (6-step wizard), NLP safety layer, Hybrid mode.
 // ============================================
 
 import Calendar from "@/components/ui/calendar";
@@ -14,7 +16,7 @@ import { useAppStore } from "@/store/appStore";
 import { EventType, FutureEvent, ReminderOption } from "@/types";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -91,7 +93,8 @@ const TIME_PRESETS = [
 ];
 
 interface VoicePreview {
-  title: string;
+  title: string;          // cleaned, English-normalized title
+  titleRaw: string;       // original transcript, preserved as-is (may contain Sinhala)
   type: EventType;
   date: Date;
   time: string;
@@ -103,6 +106,38 @@ interface VoicePreview {
   confidenceScore: number;
   confidenceLevel: "High" | "Medium" | "Needs Review";
 }
+
+// Guided Voice Builder data accumulated across wizard steps
+interface GuidedEventData {
+  title: string;       // raw input as spoken (preserved)
+  titleClean: string;  // normalized English title
+  date: Date | null;
+  time: string;
+  location: string;
+  type: EventType;
+  isRecurringYearly: boolean;
+}
+
+// 0=idle,1=title,2=date,3=time,4=location,5=confirm
+type GuidedStep = 0 | 1 | 2 | 3 | 4 | 5;
+
+// Recognized voice mode
+type VoiceMode = "quick" | "guided";
+type VoiceLang = "en-US" | "si-LK";
+
+// Guided trigger phrases that switch to guided mode suggestion
+const GUIDED_TRIGGER_PHRASES = [
+  "create event", "schedule", "add meeting", "plan", "new event",
+];
+
+const GUIDED_STEP_PROMPTS: Record<GuidedStep, string> = {
+  0: "Tap the mic or type below to begin",
+  1: "🎤 What is the event?",
+  2: "📅 When is it? (e.g. next Friday, June 20)",
+  3: "⏰ What time? (e.g. 7 PM, morning)",
+  4: "📍 Where? (say or type 'skip' to skip)",
+  5: "✅ Confirm your event",
+};
 
 export default function FutureEventScreen() {
   const { profile } = useAppStore();
@@ -135,18 +170,42 @@ export default function FutureEventScreen() {
   
   const completionRate = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
 
-  // Voice template state
+  // ── Voice template state ──────────────────────────────────────────────────
   const [voiceInputText, setVoiceInputText] = useState("");
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
 
-  // Target selections for modals (composer vs voice preview)
-  const [calendarTarget, setCalendarTarget] = useState<"composer" | "voice" | null>(null);
-  const [timePickerTarget, setTimePickerTarget] = useState<"composer" | "voice" | null>(null);
+  // Target selections for modals (composer vs voice preview vs guided)
+  const [calendarTarget, setCalendarTarget] = useState<"composer" | "voice" | "guided" | null>(null);
+  const [timePickerTarget, setTimePickerTarget] = useState<"composer" | "voice" | "guided" | null>(null);
 
-  // Real voice recognition state (Option B)
+  // Real voice recognition state
   const [isListening, setIsListening] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [webRecognitionInstance, setWebRecognitionInstance] = useState<any>(null);
+
+  // ── v2: Bilingual & finalization state ───────────────────────────────────
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("quick");
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>("en-US");
+  const [selectedLangOption, setSelectedLangOption] = useState<"en-US" | "si-LK" | "auto">("en-US");
+  const [autoLangLocked, setAutoLangLocked] = useState(false);
+  // Raw transcript buffer from mic — parsed only after finalization gate
+  const [transcriptBuffer, setTranscriptBuffer] = useState("");
+  // useRef for silence timer to avoid stale-closure issues
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── v2: Guided Voice Builder state ───────────────────────────────────────
+  const [guidedStep, setGuidedStep] = useState<GuidedStep>(0);
+  const [guidedData, setGuidedData] = useState<GuidedEventData>({
+    title: "",
+    titleClean: "",
+    date: null,
+    time: "",
+    location: "",
+    type: "Other",
+    isRecurringYearly: false,
+  });
+  // Hint shown when quick-parse text looks like a guided trigger phrase
+  const [showGuidedSuggestion, setShowGuidedSuggestion] = useState(false);
 
   // Manual Add Composer state
   const [composerTitle, setComposerTitle] = useState("");
@@ -188,89 +247,91 @@ export default function FutureEventScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
+  // v2: Speech recognition effect — depends on voiceLang so the Web Speech
+  //     instance is recreated when the user changes language.
   useEffect(() => {
     const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
 
     if (Platform.OS !== "web" && isNativeModuleAvailable) {
+      // ── Native branch (react-native-voice) ──────────────────────────────
       const Voice = require("@react-native-voice/voice").default;
-      
-      const onSpeechStart = () => {
+
+      Voice.onSpeechStart = () => {
         setIsListening(true);
         setVoiceError(null);
+        setTranscriptBuffer("");
+        setAutoLangLocked(false); // reset lock for new session
       };
-      
-      const onSpeechEnd = () => {
-        setIsListening(false);
-      };
-      
-      const onSpeechError = (e: any) => {
+
+      // Layer 1: onSpeechEnd → immediately flush
+      Voice.onSpeechEnd = () => handleSpeechEnd();
+
+      Voice.onSpeechError = (e: any) => {
         console.error("Native onSpeechError:", e);
         setVoiceError(e.error?.message || "Speech recognition error");
         setIsListening(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       };
-      
-      const onSpeechResults = (e: any) => {
+
+      // Layer 2: onSpeechResults → buffer + reset 2.5 s timer
+      Voice.onSpeechResults = (e: any) => {
         if (e.value && e.value.length > 0) {
-          const txt = e.value[0];
-          setVoiceInputText(txt);
-          const parsed = parseNaturalLanguageEvent(txt);
-          setVoicePreview(parsed);
+          handleTranscriptUpdate(e.value[0]);
         }
       };
-      
-      Voice.onSpeechStart = onSpeechStart;
-      Voice.onSpeechEnd = onSpeechEnd;
-      Voice.onSpeechError = onSpeechError;
-      Voice.onSpeechResults = onSpeechResults;
-      
+
       return () => {
-        Voice.destroy().then(() => {
-          Voice.removeAllListeners();
-        }).catch((err: any) => {
-          console.error("Voice destroy error:", err);
-        });
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        Voice.destroy().then(() => Voice.removeAllListeners())
+          .catch((err: any) => console.error("Voice destroy error:", err));
       };
-    } else {
-      // Web speech recognition setup
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const rec = new SpeechRecognition();
-        rec.continuous = false;
-        rec.interimResults = true;
-        rec.lang = "en-US";
-        
-        rec.onstart = () => {
-          setIsListening(true);
-          setVoiceError(null);
-        };
-        
-        rec.onend = () => {
-          setIsListening(false);
-        };
-        
-        rec.onerror = (e: any) => {
-          console.error("Web SpeechRecognition error:", e);
-          setVoiceError(e.error || "Speech recognition error");
-          setIsListening(false);
-        };
-        
-        rec.onresult = (e: any) => {
-          let segments = [];
-          for (let i = 0; i < e.results.length; i++) {
-            segments.push(e.results[i][0].transcript.trim());
-          }
-          const fullTranscript = segments.filter(Boolean).join(" ");
-          setVoiceInputText(fullTranscript);
-          if (fullTranscript.trim()) {
-            const parsed = parseNaturalLanguageEvent(fullTranscript);
-            setVoicePreview(parsed);
-          }
-        };
-        
-        setWebRecognitionInstance(rec);
-      }
+    } else if (Platform.OS === "web") {
+      // ── Web branch (SpeechRecognition API) ──────────────────────────────
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) return;
+
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = voiceLang; // v2: uses active language
+
+      rec.onstart = () => {
+        setIsListening(true);
+        setVoiceError(null);
+        setTranscriptBuffer("");
+        setAutoLangLocked(false);
+      };
+
+      // Layer 1: onend → flush immediately
+      rec.onend = () => handleSpeechEnd();
+
+      rec.onerror = (e: any) => {
+        console.error("Web SpeechRecognition error:", e);
+        setVoiceError(e.error || "Speech recognition error");
+        setIsListening(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      };
+
+      // Layer 2: onresult → buffer + reset 2.5 s timer
+      rec.onresult = (e: any) => {
+        const segments: string[] = [];
+        for (let i = 0; i < e.results.length; i++) {
+          segments.push(e.results[i][0].transcript.trim());
+        }
+        const fullTranscript = segments.filter(Boolean).join(" ");
+        if (fullTranscript.trim()) handleTranscriptUpdate(fullTranscript);
+      };
+
+      setWebRecognitionInstance(rec);
+
+      return () => {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        try { rec.abort(); } catch (_) {}
+      };
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceLang]);
 
   const loadEvents = async () => {
     if (!profile) return;
@@ -283,6 +344,113 @@ export default function FutureEventScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ============================================
+  // v2 Helper Functions
+  // ============================================
+
+  /**
+   * NLP Safety Gate: returns true only if the text has enough
+   * meaningful content to warrant parsing.
+   * - If a category keyword is found → always parse
+   * - If a date or time token is found → parse
+   * - Fallback: at least 3 words (covers "Dinner with Sarah")
+   */
+  const hasMinimumIntent = (text: string): boolean => {
+    const lower = text.toLowerCase().trim();
+    if (!lower || lower.length < 5) return false;
+    const hasCategoryKeyword = Object.values(TRIGGER_KEYWORDS)
+      .flat().some(kw => lower.includes(kw));
+    if (hasCategoryKeyword) return true;
+    const hasDateOrTime = /(today|tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[\/-]\d{1,2}|\bam\b|\bpm\b|noon|morning|afternoon|evening|night|\d{1,2}:\d{2})/.test(lower);
+    if (hasDateOrTime) return true;
+    // Fallback: meaningful sentence (3+ words)
+    return lower.split(/\s+/).length >= 3;
+  };
+
+  /**
+   * Strips Sinhala Unicode characters to produce a clean English title.
+   * The raw text is always preserved separately in titleRaw.
+   */
+  const normalizeMixedTitle = (rawTitle: string): string => {
+    let cleaned = rawTitle
+      // remove Sinhala Unicode block
+      .replace(/[\u0D80-\u0DFF]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : rawTitle.trim();
+  };
+
+  /**
+   * Lightweight keyword-based event type detector (used in guided mode
+   * step 1 to suggest an event type from the title input).
+   */
+  const detectEventTypeFromText = (text: string): EventType => {
+    const lower = text.toLowerCase().trim();
+    for (const key of Object.keys(TRIGGER_KEYWORDS) as EventType[]) {
+      const words = TRIGGER_KEYWORDS[key];
+      if (words.some(w => lower.includes(w))) return key;
+    }
+    return "Other";
+  };
+
+  /**
+   * One-shot language auto-detection.
+   * Runs on the first transcript of a session. If Sinhala Unicode
+   * is detected the recognition language is locked to si-LK for the
+   * rest of the session. Does NOT flip mid-stream.
+   */
+  const detectAndLockLanguage = (transcript: string) => {
+    if (autoLangLocked || selectedLangOption !== "auto") return;
+    const hasSinhala = /[\u0D80-\u0DFF]/.test(transcript);
+    if (hasSinhala) setVoiceLang("si-LK");
+    setAutoLangLocked(true);
+  };
+
+  /**
+   * Unified parse dispatcher — called after the finalization gate fires.
+   * Routes to Quick Parse NLP or Guided step capture.
+   */
+  const flushAndParse = (text: string) => {
+    if (!text.trim()) return;
+    if (voiceMode === "quick") {
+      setVoiceInputText(text);
+      if (hasMinimumIntent(text)) {
+        setVoicePreview(parseNaturalLanguageEvent(text));
+        setShowGuidedSuggestion(false);
+      } else {
+        setVoicePreview(null);
+      }
+    } else {
+      // Guided mode: deterministic field capture per step
+      storeGuidedField(text);
+    }
+  };
+
+  /**
+   * 3-layer finalization handler for mic transcript updates.
+   * Layer 2: resets 2.5 s silence timer on each new chunk.
+   * Layer 1 (onSpeechEnd) and Layer 3 (manual stop) call flushAndParse directly.
+   */
+  const handleTranscriptUpdate = (newTranscript: string) => {
+    setTranscriptBuffer(newTranscript);
+    detectAndLockLanguage(newTranscript);
+    // Reset silence timer
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      flushAndParse(newTranscript);
+    }, 2500);
+  };
+
+  /**
+   * Called by onSpeechEnd (Layer 1). Cancels pending silence timer
+   * and immediately flushes the buffered transcript.
+   */
+  const handleSpeechEnd = () => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    flushAndParse(transcriptBuffer);
+    setIsListening(false);
   };
 
   // ============================================
@@ -606,6 +774,7 @@ export default function FutureEventScreen() {
     const time = timeResult.time || "10:00 AM";
     const isTimeSpecified = timeResult.isSpecified;
     
+    // Build cleaned title (same logic as before, then normalize mixed-script)
     let title = text;
     title = title.replace(/^(i\s+have\s+an?\s+|it's\s+|she\s+has\s+an?\s+|he\s+has\s+an?\s+)/i, "");
     title = title.replace(/\b(day after tomorrow|tomorrow|today|next week|next month|next year)\b/gi, "");
@@ -627,7 +796,7 @@ export default function FutureEventScreen() {
     
     if (location) {
       if (type === "Vacation" && text.toLowerCase().includes("to " + location.toLowerCase())) {
-        // keep to location
+        // keep vacation destination
       } else {
         const locEscaped = location.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const locRegex = new RegExp(`\\b(in|at|near|to)\\s+${locEscaped}\\b`, 'gi');
@@ -640,7 +809,10 @@ export default function FutureEventScreen() {
     title = title.replace(/\b(on|at|in|near|to|for|with)\s*$/gi, "");
     title = title.replace(/\s+/g, " ").trim();
     
-    const finalTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
+    // v2: Apply mixed-script normalization for the display title;
+    //     titleRaw preserves the original transcript unchanged.
+    const rawTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
+    const finalTitle = normalizeMixedTitle(rawTitle);
     
     let isRecurringYearly = false;
     if (type === "Birthday" || type === "Anniversary") {
@@ -649,28 +821,18 @@ export default function FutureEventScreen() {
     }
     
     let confidenceScore = 0;
-    if (finalTitle && finalTitle.trim().length > 0) {
-      confidenceScore += 30;
-    }
-    if (isDateSpecified) {
-      confidenceScore += 30;
-    }
-    if (isTimeSpecified) {
-      confidenceScore += 20;
-    }
-    if (isLocationSpecified) {
-      confidenceScore += 20;
-    }
+    if (finalTitle && finalTitle.trim().length > 0) confidenceScore += 30;
+    if (isDateSpecified) confidenceScore += 30;
+    if (isTimeSpecified) confidenceScore += 20;
+    if (isLocationSpecified) confidenceScore += 20;
     
     let confidenceLevel: "High" | "Medium" | "Needs Review" = "Needs Review";
-    if (confidenceScore >= 80) {
-      confidenceLevel = "High";
-    } else if (confidenceScore >= 50) {
-      confidenceLevel = "Medium";
-    }
+    if (confidenceScore >= 80) confidenceLevel = "High";
+    else if (confidenceScore >= 50) confidenceLevel = "Medium";
     
     return { 
-      title: finalTitle, 
+      title: finalTitle,
+      titleRaw: text,          // always preserve original
       type, 
       date, 
       time, 
@@ -683,6 +845,7 @@ export default function FutureEventScreen() {
       confidenceLevel
     };
   };
+
 
   const normalizeBirthdayDate = (selectedDate: Date): Date => {
     const now = new Date();
@@ -752,7 +915,7 @@ export default function FutureEventScreen() {
       }
       try {
         const Voice = require("@react-native-voice/voice").default;
-        await Voice.start("en-US");
+        await Voice.start(voiceLang); // v2: use selected language
       } catch (e: any) {
         console.error("Voice start error:", e);
         Alert.alert("Error", "Could not start voice recognition: " + (e.message || e));
@@ -761,11 +924,13 @@ export default function FutureEventScreen() {
   };
 
   const stopVoiceRecognition = async () => {
+    // Layer 3: Manual stop — flush buffered transcript immediately
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    flushAndParse(transcriptBuffer);
+
     if (Platform.OS === "web") {
       if (webRecognitionInstance) {
-        try {
-          webRecognitionInstance.stop();
-        } catch (e) {
+        try { webRecognitionInstance.stop(); } catch (e) {
           console.error("Failed to stop web recognition:", e);
         }
       }
@@ -778,6 +943,96 @@ export default function FutureEventScreen() {
       }
     }
     setIsListening(false);
+  };
+
+  // ============================================
+  // v2: Guided Voice Builder — Step Field Capture
+  // ============================================
+
+  /**
+   * Deterministic field store for each guided wizard step.
+   * NO full NLP per step — only lightweight date/time parsers for steps 2 & 3.
+   */
+  const storeGuidedField = (rawText: string) => {
+    const lower = rawText.toLowerCase().trim();
+    switch (guidedStep) {
+      case 1: { // Title — raw capture
+        const detectedType = detectEventTypeFromText(rawText);
+        const cleanTitle = normalizeMixedTitle(rawText);
+        setGuidedData(prev => ({
+          ...prev,
+          title: rawText,
+          titleClean: cleanTitle,
+          type: detectedType,
+          isRecurringYearly: detectedType === "Birthday" || detectedType === "Anniversary",
+        }));
+        setGuidedStep(2);
+        break;
+      }
+      case 2: { // Date — lightweight parser only
+        const { date } = parseNaturalDateWithSpec(rawText);
+        setGuidedData(prev => ({ ...prev, date }));
+        setGuidedStep(3);
+        break;
+      }
+      case 3: { // Time — lightweight parser only
+        const { time } = parseNaturalTime(rawText);
+        setGuidedData(prev => ({ ...prev, time: time || "10:00 AM" }));
+        setGuidedStep(4);
+        break;
+      }
+      case 4: { // Location — raw capture; 'skip' = empty
+        const loc = lower === "skip" ? "" : rawText.trim();
+        setGuidedData(prev => ({ ...prev, location: loc }));
+        setGuidedStep(5);
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  /** Reset guided wizard to idle state */
+  const resetGuidedWizard = () => {
+    setGuidedStep(0);
+    setGuidedData({ title: "", titleClean: "", date: null, time: "", location: "", type: "Other", isRecurringYearly: false });
+    setTranscriptBuffer("");
+  };
+
+  /** Save event built by the guided wizard */
+  const handleConfirmGuidedEvent = async () => {
+    if (!profile) return;
+    const title = guidedData.titleClean.trim() || guidedData.title.trim() || `${guidedData.type} Event`;
+    const date = guidedData.date || new Date();
+    const time = guidedData.time || "10:00 AM";
+
+    const timeRegex = /^\d{1,2}:\d{2}\s*(AM|PM)$/i;
+    const hourRegex = /^\d{1,2}\s*(AM|PM)$/i;
+    if (!timeRegex.test(time) && !hourRegex.test(time)) {
+      Alert.alert("Invalid Time", "Please tap Time above to set a valid time.");
+      return;
+    }
+
+    try {
+      await futureEventService.addEvent({
+        profileID: profile.id,
+        title,
+        type: guidedData.type,
+        eventDate: date,
+        eventTime: time,
+        location: guidedData.location || undefined,
+        reminderOptions: guidedData.isRecurringYearly ? ["same_day"] : ["1_day_before"],
+        sendReminderToSpouse: false,
+        isShared: false,
+        isRecurringYearly: guidedData.isRecurringYearly,
+      });
+      resetGuidedWizard();
+      setActivePanel(null);
+      loadEvents();
+      Alert.alert("Success", "Event created from guided voice session! 🎉");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create event");
+    }
   };
 
   // Submit parsed Voice Template
@@ -1276,213 +1531,299 @@ export default function FutureEventScreen() {
               {activePanel === 'voice' && (
                 <View style={styles.panelContent}>
 
-                  <View style={styles.voiceInputWrapper}>
-                    <TextInput
-                      style={styles.voiceTextInput}
-                      value={voiceInputText}
-                      onChangeText={(txt) => {
-                        setVoiceInputText(txt);
-                        if (txt.trim()) {
-                          const parsed = parseNaturalLanguageEvent(txt);
-                          setVoicePreview(parsed);
-                        } else {
+                  {/* ── v2: Hybrid Mode Toggle ─────────────────────────────── */}
+                  <View style={styles.modeSelectorRow}>
+                    <TouchableOpacity
+                      style={[styles.modePill, voiceMode === "quick" && styles.modePillActive]}
+                      onPress={() => {
+                        if (voiceMode !== "quick") {
+                          setVoiceMode("quick");
+                          resetGuidedWizard();
+                          setVoiceInputText("");
                           setVoicePreview(null);
+                          setShowGuidedSuggestion(false);
                         }
                       }}
-                      placeholder="e.g. dinner with Sarah next Friday at 7 PM in Bistro"
-                      placeholderTextColor="#9CA3AF"
-                    />
-                    <TouchableOpacity 
-                      style={[styles.inlineMicrophoneBtn, isListening && styles.inlineMicrophoneBtnListening]}
-                      onPress={startVoiceRecognition}
                     >
-                      <MaterialCommunityIcons name={isListening ? "stop" : "microphone"} size={18} color="#FFF" />
+                      <Text style={[styles.modePillText, voiceMode === "quick" && styles.modePillTextActive]}>⚡ Quick Parse</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modePill, voiceMode === "guided" && styles.modePillActive]}
+                      onPress={() => {
+                        if (voiceMode !== "guided") {
+                          setVoiceMode("guided");
+                          setVoiceInputText("");
+                          setVoicePreview(null);
+                          resetGuidedWizard();
+                          setShowGuidedSuggestion(false);
+                        }
+                      }}
+                    >
+                      <Text style={[styles.modePillText, voiceMode === "guided" && styles.modePillTextActive]}>🧭 Guided</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {isListening && (
-                    <View style={styles.listeningContainer}>
-                      <ActivityIndicator size="small" color="#7C3AED" />
-                      <Text style={styles.listeningText}>Listening... Speak now.</Text>
-                    </View>
-                  )}
-                  {voiceError && (
-                    <View style={styles.voiceErrorContainer}>
-                      <Text style={styles.voiceErrorText}>⚠️ {voiceError}</Text>
-                    </View>
-                  )}
-
-                  {/* Live Parsed Interpretation Preview Card */}
-                  {voicePreview && (
-                    <View style={styles.previewCard}>
-                      
-                      {/* Card Header with Template and Confidence */}
-                      <View style={styles.previewCardHeader}>
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <Text style={styles.previewCardTitle}>✨ Interpreted Event Preview</Text>
-                          <Text style={styles.detectedTemplateText}>
-                            Detected Template: {EVENT_ICONS[voicePreview.type]} {voicePreview.type} Template
-                          </Text>
-                        </View>
-                        
-                        {/* Confidence Badge */}
-                        <View style={[
-                          styles.confidenceBadge,
-                          voicePreview.confidenceLevel === "High" && styles.confidenceHigh,
-                          voicePreview.confidenceLevel === "Medium" && styles.confidenceMedium,
-                          voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLow,
-                        ]}>
-                          <Text style={[
-                            styles.confidenceBadgeText,
-                            voicePreview.confidenceLevel === "High" && styles.confidenceHighText,
-                            voicePreview.confidenceLevel === "Medium" && styles.confidenceMediumText,
-                            voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLowText,
-                          ]}>
-                            {voicePreview.confidenceLevel === "High" 
-                              ? "🟢 High Confidence" 
-                              : voicePreview.confidenceLevel === "Medium" 
-                                ? "🟡 Medium Confidence" 
-                                : "🔴 Needs Review"}{" "}
-                            ({voicePreview.confidenceScore}%)
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.previewCardBody}>
-                        
-                        {/* Title input */}
-                        <Text style={styles.previewFieldLabel}>Event Title</Text>
-                        <TextInput
-                          style={styles.previewInput}
-                          value={voicePreview.title}
-                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, title: txt })}
-                          placeholder="Event Title"
-                          placeholderTextColor="#9CA3AF"
-                        />
-
-                        {/* Category selection */}
-                        <Text style={styles.previewFieldLabel}>Event Type</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewTypesScroll}>
-                          <View style={styles.typesRow}>
-                            {EVENT_TYPES.map((type) => (
-                              <TouchableOpacity
-                                key={type}
-                                style={[
-                                  styles.previewTypeChip,
-                                  voicePreview.type === type && styles.previewTypeChipActive,
-                                ]}
-                                onPress={() => {
-                                  const isBirthdayOrAnniversary = type === "Birthday" || type === "Anniversary";
-                                  setVoicePreview({ 
-                                    ...voicePreview, 
-                                    type,
-                                    isRecurringYearly: isBirthdayOrAnniversary ? true : voicePreview.isRecurringYearly
-                                  });
-                                }}
-                              >
-                                <Text style={[
-                                  styles.previewTypeChipText,
-                                  voicePreview.type === type && styles.previewTypeChipTextActive
-                                ]}>
-                                  {EVENT_ICONS[type]} {type}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        </ScrollView>
-
-                        {/* Date and Time selectors side by side */}
-                        <View style={styles.previewSideBySide}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.previewFieldLabel}>Date</Text>
-                            <TouchableOpacity
-                              style={styles.previewSelectorBtn}
-                              onPress={() => {
-                                setCalendarTarget("voice");
-                                setShowDateCalendar(true);
-                              }}
-                            >
-                              <Text style={styles.previewSelectorBtnText}>
-                                📅 {formatDate(voicePreview.date)}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.previewFieldLabel}>Time</Text>
-                            <TouchableOpacity
-                              style={styles.previewSelectorBtn}
-                              onPress={() => {
-                                setTimePickerTarget("voice");
-                                setShowTimePicker(true);
-                              }}
-                            >
-                              <Text style={styles.previewSelectorBtnText}>
-                                ⏰ {voicePreview.time || "Select Time"}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                        
-                        {/* Missing Time Warning */}
-                        {!voicePreview.isTimeSpecified && (
-                          <View style={styles.missingBadgeWarning}>
-                            <Text style={styles.missingBadgeWarningText}>
-                              ⚠️ Missing Time (using 10:00 AM default)
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Location input */}
-                        <Text style={styles.previewFieldLabel}>Location</Text>
-                        <TextInput
-                          style={styles.previewInput}
-                          value={voicePreview.location}
-                          onChangeText={(txt) => setVoicePreview({ ...voicePreview, location: txt, isLocationSpecified: !!txt.trim() })}
-                          placeholder="e.g. Colombo (Optional)"
-                          placeholderTextColor="#9CA3AF"
-                        />
-
-                        {/* Missing Location Warning */}
-                        {!voicePreview.isLocationSpecified && (
-                          <View style={styles.missingBadgeWarning}>
-                            <Text style={styles.missingBadgeWarningText}>
-                              ⚠️ Missing Location
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Yearly Recurrence Switch */}
-                        <View style={styles.previewSwitchRow}>
-                          <Text style={styles.previewSwitchLabel}>Recurring Yearly</Text>
-                          <Switch
-                            value={voicePreview.isRecurringYearly}
-                            onValueChange={(val) => setVoicePreview({ ...voicePreview, isRecurringYearly: val })}
-                            trackColor={{ false: "#D1D5DB", true: "#C084FC" }}
-                            thumbColor={voicePreview.isRecurringYearly ? "#7C3AED" : "#F3F4F6"}
-                          />
-                        </View>
-
-                      </View>
-
-                      {/* Confirm & Cancel Buttons */}
-                      <View style={styles.previewCardButtonsRow}>
-                        <TouchableOpacity 
-                          style={[styles.previewActionBtn, styles.previewCancelBtn]}
+                  {/* ── v2: Language Selector ──────────────────────────────── */}
+                  <View style={styles.langSelectorRow}>
+                    <Text style={styles.langSelectorLabel}>Language:</Text>
+                    {(["en-US", "si-LK", "auto"] as const).map((lang) => {
+                      const label = lang === "en-US" ? "🇬🇧 EN" : lang === "si-LK" ? "🇱🇰 සිං" : "🔄 Auto";
+                      const isActive = selectedLangOption === lang;
+                      return (
+                        <TouchableOpacity
+                          key={lang}
+                          style={[styles.langPill, isActive && styles.langPillActive]}
                           onPress={() => {
-                            setVoiceInputText("");
-                            setVoicePreview(null);
+                            setSelectedLangOption(lang);
+                            setAutoLangLocked(false);
+                            if (lang === "en-US") setVoiceLang("en-US");
+                            else if (lang === "si-LK") setVoiceLang("si-LK");
+                            else setVoiceLang("en-US"); // auto starts with en-US
                           }}
                         >
-                          <Text style={styles.previewCancelBtnText}>Clear</Text>
+                          <Text style={[styles.langPillText, isActive && styles.langPillTextActive]}>{label}</Text>
                         </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
-                        <TouchableOpacity 
-                          style={[styles.previewActionBtn, styles.previewConfirmBtn]}
-                          onPress={handleConfirmVoiceEvent}
+                  {/* ── QUICK PARSE MODE ──────────────────────────────────── */}
+                  {voiceMode === "quick" && (
+                    <>
+                      <View style={styles.voiceInputWrapper}>
+                        <TextInput
+                          style={styles.voiceTextInput}
+                          value={voiceInputText}
+                          onChangeText={(txt) => {
+                            setVoiceInputText(txt);
+                            // Manual typing: live parse with NLP safety gate
+                            if (txt.trim()) {
+                              if (hasMinimumIntent(txt)) {
+                                setVoicePreview(parseNaturalLanguageEvent(txt));
+                                setShowGuidedSuggestion(false);
+                              } else {
+                                setVoicePreview(null);
+                              }
+                              const lower = txt.toLowerCase();
+                              const isGuidedTrigger = GUIDED_TRIGGER_PHRASES.some(p => lower.includes(p));
+                              setShowGuidedSuggestion(isGuidedTrigger);
+                            } else {
+                              setVoicePreview(null);
+                              setShowGuidedSuggestion(false);
+                            }
+                          }}
+                          placeholder="e.g. dinner with Sarah next Friday at 7 PM in Bistro"
+                          placeholderTextColor="#9CA3AF"
+                        />
+                        <TouchableOpacity
+                          style={[styles.inlineMicrophoneBtn, isListening && styles.inlineMicrophoneBtnListening]}
+                          onPress={startVoiceRecognition}
                         >
-                          <Text style={styles.previewConfirmBtnText}>Create Event</Text>
+                          <MaterialCommunityIcons name={isListening ? "stop" : "microphone"} size={18} color="#FFF" />
                         </TouchableOpacity>
+                      </View>
+
+                      {isListening && (
+                        <View style={styles.listeningContainer}>
+                          <ActivityIndicator size="small" color="#7C3AED" />
+                          <Text style={styles.listeningText}>Listening… parsing after you finish speaking.</Text>
+                        </View>
+                      )}
+                      {voiceError && (
+                        <View style={styles.voiceErrorContainer}>
+                          <Text style={styles.voiceErrorText}>⚠️ {voiceError}</Text>
+                        </View>
+                      )}
+
+                      {/* Guided mode suggestion hint */}
+                      {showGuidedSuggestion && (
+                        <TouchableOpacity
+                          style={styles.guidedSuggestionBanner}
+                          onPress={() => { setVoiceMode("guided"); setVoiceInputText(""); setVoicePreview(null); resetGuidedWizard(); setShowGuidedSuggestion(false); }}
+                        >
+                          <Text style={styles.guidedSuggestionText}>💡 Switch to Guided mode for step-by-step help?</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* NLP safety hint when input is short */}
+                      {voiceInputText.trim().length > 0 && !hasMinimumIntent(voiceInputText) && !voicePreview && (
+                        <View style={styles.nlpHintBanner}>
+                          <Text style={styles.nlpHintText}>🎙 Keep going — say a date, time, or event type to generate a preview.</Text>
+                        </View>
+                      )}
+
+                      {/* Parsed Preview Card */}
+                      {voicePreview && (
+                        <View style={styles.previewCard}>
+                          <View style={styles.previewCardHeader}>
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <Text style={styles.previewCardTitle}>✨ Interpreted Event Preview</Text>
+                              <Text style={styles.detectedTemplateText}>
+                                Detected: {EVENT_ICONS[voicePreview.type]} {voicePreview.type} Template
+                              </Text>
+                              {voicePreview.titleRaw && voicePreview.titleRaw !== voicePreview.title && (
+                                <Text style={styles.rawTitleSubtext}>Original: "{voicePreview.titleRaw.substring(0, 60)}{voicePreview.titleRaw.length > 60 ? '…' : ''}"</Text>
+                              )}
+                            </View>
+                            <View style={[
+                              styles.confidenceBadge,
+                              voicePreview.confidenceLevel === "High" && styles.confidenceHigh,
+                              voicePreview.confidenceLevel === "Medium" && styles.confidenceMedium,
+                              voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLow,
+                            ]}>
+                              <Text style={[
+                                styles.confidenceBadgeText,
+                                voicePreview.confidenceLevel === "High" && styles.confidenceHighText,
+                                voicePreview.confidenceLevel === "Medium" && styles.confidenceMediumText,
+                                voicePreview.confidenceLevel === "Needs Review" && styles.confidenceLowText,
+                              ]}>
+                                {voicePreview.confidenceLevel === "High" ? "🟢 High" : voicePreview.confidenceLevel === "Medium" ? "🟡 Medium" : "🔴 Review"} ({voicePreview.confidenceScore}%)
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.previewCardBody}>
+                            <Text style={styles.previewFieldLabel}>Event Title</Text>
+                            <TextInput style={styles.previewInput} value={voicePreview.title} onChangeText={(txt) => setVoicePreview({ ...voicePreview, title: txt })} placeholder="Event Title" placeholderTextColor="#9CA3AF" />
+                            <Text style={styles.previewFieldLabel}>Event Type</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewTypesScroll}>
+                              <View style={styles.typesRow}>
+                                {EVENT_TYPES.map((type) => (
+                                  <TouchableOpacity key={type} style={[styles.previewTypeChip, voicePreview.type === type && styles.previewTypeChipActive]}
+                                    onPress={() => setVoicePreview({ ...voicePreview, type, isRecurringYearly: (type === "Birthday" || type === "Anniversary") ? true : voicePreview.isRecurringYearly })}>
+                                    <Text style={[styles.previewTypeChipText, voicePreview.type === type && styles.previewTypeChipTextActive]}>{EVENT_ICONS[type]} {type}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            </ScrollView>
+                            <View style={styles.previewSideBySide}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.previewFieldLabel}>Date</Text>
+                                <TouchableOpacity style={styles.previewSelectorBtn} onPress={() => { setCalendarTarget("voice"); setShowDateCalendar(true); }}>
+                                  <Text style={styles.previewSelectorBtnText}>📅 {formatDate(voicePreview.date)}</Text>
+                                </TouchableOpacity>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.previewFieldLabel}>Time</Text>
+                                <TouchableOpacity style={styles.previewSelectorBtn} onPress={() => { setTimePickerTarget("voice"); setShowTimePicker(true); }}>
+                                  <Text style={styles.previewSelectorBtnText}>⏰ {voicePreview.time || "Select Time"}</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                            {!voicePreview.isTimeSpecified && <View style={styles.missingBadgeWarning}><Text style={styles.missingBadgeWarningText}>⚠️ Missing Time (using 10:00 AM default)</Text></View>}
+                            <Text style={styles.previewFieldLabel}>Location</Text>
+                            <TextInput style={styles.previewInput} value={voicePreview.location} onChangeText={(txt) => setVoicePreview({ ...voicePreview, location: txt, isLocationSpecified: !!txt.trim() })} placeholder="e.g. Colombo (Optional)" placeholderTextColor="#9CA3AF" />
+                            {!voicePreview.isLocationSpecified && <View style={styles.missingBadgeWarning}><Text style={styles.missingBadgeWarningText}>⚠️ Missing Location</Text></View>}
+                            <View style={styles.previewSwitchRow}>
+                              <Text style={styles.previewSwitchLabel}>Recurring Yearly</Text>
+                              <Switch value={voicePreview.isRecurringYearly} onValueChange={(val) => setVoicePreview({ ...voicePreview, isRecurringYearly: val })} trackColor={{ false: "#D1D5DB", true: "#C084FC" }} thumbColor={voicePreview.isRecurringYearly ? "#7C3AED" : "#F3F4F6"} />
+                            </View>
+                          </View>
+                          <View style={styles.previewCardButtonsRow}>
+                            <TouchableOpacity style={[styles.previewActionBtn, styles.previewCancelBtn]} onPress={() => { setVoiceInputText(""); setVoicePreview(null); }}>
+                              <Text style={styles.previewCancelBtnText}>Clear</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.previewActionBtn, styles.previewConfirmBtn]} onPress={handleConfirmVoiceEvent}>
+                              <Text style={styles.previewConfirmBtnText}>Create Event</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── GUIDED MODE ───────────────────────────────────────── */}
+                  {voiceMode === "guided" && (
+                    <View style={styles.guidedContainer}>
+                      {/* Step progress indicator */}
+                      {guidedStep > 0 && guidedStep < 5 && (
+                        <View style={styles.guidedStepIndicatorRow}>
+                          {([1, 2, 3, 4] as const).map((s) => (
+                            <View key={s} style={[styles.guidedStepDot, guidedStep >= s && styles.guidedStepDotActive]} />
+                          ))}
+                          <Text style={styles.guidedStepLabel}>Step {guidedStep} of 4</Text>
+                        </View>
+                      )}
+
+                      {/* Step prompt card */}
+                      <View style={styles.guidedStepCard}>
+                        <Text style={styles.guidedPromptText}>{GUIDED_STEP_PROMPTS[guidedStep]}</Text>
+
+                        {/* Steps 0 – 4: input + mic */}
+                        {guidedStep < 5 && (
+                          <>
+                            <View style={[styles.voiceInputWrapper, { marginTop: 12, marginBottom: 0 }]}>
+                              <TextInput
+                                style={styles.voiceTextInput}
+                                value={transcriptBuffer}
+                                onChangeText={(txt) => {
+                                  setTranscriptBuffer(txt);
+                                }}
+                                placeholder={guidedStep === 0 ? "Say 'create event' or tap mic…" : guidedStep === 4 ? "Location or type 'skip'" : "Speak or type…"}
+                                placeholderTextColor="#9CA3AF"
+                                editable={guidedStep > 0}
+                              />
+                              <TouchableOpacity
+                                style={[styles.inlineMicrophoneBtn, isListening && styles.inlineMicrophoneBtnListening]}
+                                onPress={guidedStep === 0 ? () => setGuidedStep(1) : startVoiceRecognition}
+                              >
+                                <MaterialCommunityIcons name={isListening ? "stop" : guidedStep === 0 ? "play" : "microphone"} size={18} color="#FFF" />
+                              </TouchableOpacity>
+                            </View>
+                            {isListening && (
+                              <View style={[styles.listeningContainer, { marginTop: 8 }]}>
+                                <ActivityIndicator size="small" color="#7C3AED" />
+                                <Text style={styles.listeningText}>Listening…</Text>
+                              </View>
+                            )}
+                            {guidedStep > 0 && (
+                              <View style={styles.guidedNavRow}>
+                                {guidedStep > 1 && (
+                                  <TouchableOpacity style={styles.guidedBackBtn} onPress={() => setGuidedStep((guidedStep - 1) as GuidedStep)}>
+                                    <Text style={styles.guidedBackBtnText}>← Back</Text>
+                                  </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                  style={styles.guidedNextBtn}
+                                  onPress={() => {
+                                    const txt = transcriptBuffer.trim();
+                                    if (!txt && guidedStep !== 4) return;
+                                    storeGuidedField(txt || "skip");
+                                    setTranscriptBuffer("");
+                                  }}
+                                >
+                                  <Text style={styles.guidedNextBtnText}>{guidedStep === 4 ? "Preview →" : "Next →"}</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </>
+                        )}
+
+                        {/* Step 5: Confirm card */}
+                        {guidedStep === 5 && (
+                          <View style={{ marginTop: 12 }}>
+                            <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Event</Text><Text style={styles.guidedConfirmValue}>{guidedData.titleClean || guidedData.title || "—"}</Text></View>
+                            <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Type</Text><Text style={styles.guidedConfirmValue}>{EVENT_ICONS[guidedData.type]} {guidedData.type}</Text></View>
+                            <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Date</Text><Text style={styles.guidedConfirmValue}>{guidedData.date ? formatDate(guidedData.date) : "Not set"}</Text></View>
+                            <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Time</Text>
+                              <TouchableOpacity onPress={() => { setTimePickerTarget("guided"); setShowTimePicker(true); }}>
+                                <Text style={[styles.guidedConfirmValue, { color: "#7C3AED", textDecorationLine: "underline" }]}>{guidedData.time || "Tap to set"}</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {guidedData.location ? <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Location</Text><Text style={styles.guidedConfirmValue}>{guidedData.location}</Text></View> : null}
+                            {guidedData.isRecurringYearly && <View style={styles.guidedConfirmRow}><Text style={styles.guidedConfirmLabel}>Recurring</Text><Text style={styles.guidedConfirmValue}>🔁 Yearly</Text></View>}
+                            <View style={styles.previewCardButtonsRow}>
+                              <TouchableOpacity style={[styles.previewActionBtn, styles.previewCancelBtn]} onPress={() => setGuidedStep(4)}>
+                                <Text style={styles.previewCancelBtnText}>✏️ Edit</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.previewActionBtn, styles.previewConfirmBtn]} onPress={handleConfirmGuidedEvent}>
+                                <Text style={styles.previewConfirmBtnText}>✅ Save Event</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity style={{ alignItems: "center", marginTop: 10 }} onPress={resetGuidedWizard}>
+                              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>✖ Cancel & Start Over</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     </View>
                   )}
@@ -1765,11 +2106,13 @@ export default function FutureEventScreen() {
                   key={preset.value}
                   style={[
                     styles.timePresetOption,
-                    (timePickerTarget === "voice" ? voicePreview?.time : composerTime) === preset.value && styles.timePresetOptionActive,
+                    (timePickerTarget === "voice" ? voicePreview?.time : timePickerTarget === "guided" ? guidedData.time : composerTime) === preset.value && styles.timePresetOptionActive,
                   ]}
                   onPress={() => {
                     if (timePickerTarget === "voice" && voicePreview) {
                       setVoicePreview({ ...voicePreview, time: preset.value, isTimeSpecified: true });
+                    } else if (timePickerTarget === "guided") {
+                      setGuidedData(prev => ({ ...prev, time: preset.value }));
                     } else {
                       setComposerTime(preset.value);
                     }
@@ -1790,10 +2133,12 @@ export default function FutureEventScreen() {
             <Text style={styles.sectionLabel}>Or Enter Custom Time</Text>
             <TextInput
               style={styles.input}
-              value={timePickerTarget === "voice" ? (voicePreview?.time || "") : composerTime}
+              value={timePickerTarget === "voice" ? (voicePreview?.time || "") : timePickerTarget === "guided" ? guidedData.time : composerTime}
               onChangeText={(txt) => {
                 if (timePickerTarget === "voice" && voicePreview) {
                   setVoicePreview({ ...voicePreview, time: txt, isTimeSpecified: !!txt.trim() });
+                } else if (timePickerTarget === "guided") {
+                  setGuidedData(prev => ({ ...prev, time: txt }));
                 } else {
                   setComposerTime(txt);
                 }
@@ -2934,5 +3279,210 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     textAlign: "center",
     paddingHorizontal: 20,
+  },
+
+  // ── v2: Mode Toggle ────────────────────────────────────────────────────
+  modeSelectorRow: {
+    flexDirection: "row",
+    backgroundColor: "#EDE9FE",
+    borderRadius: 20,
+    padding: 3,
+    marginBottom: 12,
+    gap: 3,
+  },
+  modePill: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: "center",
+    borderRadius: 17,
+  },
+  modePillActive: {
+    backgroundColor: "#7C3AED",
+    shadowColor: "#7C3AED",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#7C3AED",
+  },
+  modePillTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // ── v2: Language Selector ───────────────────────────────────────────────
+  langSelectorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 14,
+    flexWrap: "wrap",
+  },
+  langSelectorLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#6B7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  langPill: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+    backgroundColor: "#F5F3FF",
+  },
+  langPillActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#7C3AED",
+  },
+  langPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#7C3AED",
+  },
+  langPillTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // ── v2: NLP hints ──────────────────────────────────────────────────────
+  nlpHintBanner: {
+    backgroundColor: "#F5F3FF",
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  nlpHintText: {
+    fontSize: 12,
+    color: "#6D28D9",
+    fontWeight: "500",
+  },
+  guidedSuggestionBanner: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  guidedSuggestionText: {
+    fontSize: 12,
+    color: "#92400E",
+    fontWeight: "600",
+  },
+  rawTitleSubtext: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+
+  // ── v2: Guided Wizard ──────────────────────────────────────────────────
+  guidedContainer: {
+    marginTop: 4,
+  },
+  guidedStepIndicatorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  guidedStepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#E9D5FF",
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+  },
+  guidedStepDotActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#6D28D9",
+  },
+  guidedStepLabel: {
+    fontSize: 11,
+    color: "#7C3AED",
+    fontWeight: "700",
+    marginLeft: 4,
+  },
+  guidedStepCard: {
+    backgroundColor: "#F5F3FF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#7C3AED",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  guidedPromptText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#5B21B6",
+    letterSpacing: -0.3,
+  },
+  guidedNavRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+    gap: 8,
+  },
+  guidedBackBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+    backgroundColor: "#FFFFFF",
+  },
+  guidedBackBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#7C3AED",
+  },
+  guidedNextBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: "#7C3AED",
+    alignItems: "center",
+  },
+  guidedNextBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  guidedConfirmRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EDE9FE",
+  },
+  guidedConfirmLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  guidedConfirmValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1F2937",
+    flexShrink: 1,
+    textAlign: "right",
+    maxWidth: "70%",
   },
 });
