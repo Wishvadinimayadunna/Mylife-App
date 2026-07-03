@@ -154,6 +154,3 @@ Press:
 
 ---
 
-##  Development Reference Documents
-* [INTEGRATION_COMPLETE.md](./INTEGRATION_COMPLETE.md) — Backend integration details.
-* [PROGRESS.md](./PROGRESS.md) — Initial foundation project milestones.
