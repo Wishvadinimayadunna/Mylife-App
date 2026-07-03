@@ -125,10 +125,10 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     console.log(
-      "📝 Creating event with data:",
+      " Creating event with data:",
       JSON.stringify(req.body, null, 2),
     );
-    console.log("👤 User ID from auth:", req.userId);
+    console.log(" User ID from auth:", req.userId);
 
     const event = new FutureEvent({
       ...req.body,
@@ -136,10 +136,10 @@ router.post("/", async (req, res) => {
     });
 
     await event.save();
-    console.log("✅ Event created successfully:", event._id);
+    console.log(" Event created successfully:", event._id);
     res.status(201).json(event);
   } catch (error) {
-    console.error("❌ Create event error:", error.message);
+    console.error(" Create event error:", error.message);
     console.error("Error details:", error);
     res.status(500).json({ error: error.message || "Failed to create event" });
   }
