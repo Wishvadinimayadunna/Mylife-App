@@ -40,7 +40,7 @@ router.post(
       // Try to use database if connected, otherwise use DEV mode
       if (isDatabaseConnected()) {
         console.log(
-          "✅ Database connected - using real database for registration",
+          " Database connected - using real database for registration",
         );
 
         // Check if user exists
@@ -72,7 +72,7 @@ router.post(
       } else {
         // Database not connected - use DEV MODE fallback
         console.log(
-          "⚠️ Database not connected - using DEV mode for registration",
+          " Database not connected - using DEV mode for registration",
         );
 
         const mockUserId = "dev_" + Date.now();
@@ -121,7 +121,7 @@ router.post(
 
       // Try to use database if connected, otherwise use DEV mode
       if (isDatabaseConnected()) {
-        console.log("✅ Database connected - using real database for login");
+        console.log(" Database connected - using real database for login");
 
         // Find user
         const user = await User.findOne({ email });
@@ -152,7 +152,7 @@ router.post(
         });
       } else {
         // Database not connected - use DEV MODE fallback
-        console.log("⚠️ Database not connected - using DEV mode for login");
+        console.log(" Database not connected - using DEV mode for login");
 
         const mockUserId = "dev_" + Date.now();
         const token = jwt.sign(
