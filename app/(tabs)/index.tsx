@@ -310,16 +310,19 @@ export default function HomeScreen() {
             style={styles.avatarWrap}
             onPress={() => router.navigate("/settings")}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={styles.avatarText}>{initials}</Text>
           </TouchableOpacity>
 
           {/* Date + greeting */}
-          <Text style={styles.heroDate}>{formatDate(new Date())}</Text>
-          <Text style={styles.heroGreeting}>
-            {getGreeting()}, {firstName} 👋
-          </Text>
-          <Text style={styles.heroSub}>{"Here's what's on your plate today."}</Text>
+          <View style={styles.heroTextContainer}>
+            <Text style={styles.heroDate}>{formatDate(new Date())}</Text>
+            <Text style={styles.heroGreeting}>
+              {getGreeting()}, {firstName} 👋
+            </Text>
+            <Text style={styles.heroSub}>{"Here's what's on your plate today."}</Text>
+          </View>
 
           {/* Stat chips */}
           <View style={styles.chipRow}>
@@ -445,6 +448,9 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
+  heroTextContainer: {
+    paddingRight: 60,
+  },
   avatarWrap: {
     position: "absolute",
     top: STATUS_H + 16,
@@ -457,6 +463,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 10,
   },
   avatarText: {
     color: "#FFFFFF",

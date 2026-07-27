@@ -183,6 +183,16 @@ export default function ShoppingScreen() {
       return;
     }
 
+    // Check if the user entered multiple items in Quick Add
+    const hasMultiple = /[,\n]|\sand\s/i.test(formData.name);
+    if (hasMultiple) {
+      Alert.alert(
+        "Single Item Only",
+        "Quick Add is for entering a single item only. Please use the 'Bulk Add' option for multiple items."
+      );
+      return;
+    }
+
     try {
       if (editingItem) {
         await shoppingService.editShoppingItem(editingItem.id, {
@@ -686,7 +696,7 @@ export default function ShoppingScreen() {
                   style={styles.formTextInput}
                   value={formData.name}
                   onChangeText={handleNameChange}
-                  placeholder="e.g. Milk, Apples, Ibuprofen"
+                  placeholder="e.g. Milk"
                   placeholderTextColor="#9CA3AF"
                 />
 

@@ -985,6 +985,7 @@ export default function ToDoScreen() {
           selectedDate={
             (selectorTarget === "modal" ? formData.dueDate : composerDueDate) || new Date()
           }
+          minDate={new Date()}
         />
 
         {/* Modal: Priority Option Selector Sheet */}

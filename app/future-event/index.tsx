@@ -6,11 +6,11 @@
 //     Guided Voice Builder (6-step wizard), NLP safety layer, Hybrid mode.
 // ============================================
 
-import Calendar from "@/components/ui/calendar";
 import { AppCard } from "@/components/ui/AppCard";
+import Calendar from "@/components/ui/calendar";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { EmptyState, LoadingState } from "@/components/ui/States";
 import { StatChip } from "@/components/ui/StatChip";
+import { EmptyState, LoadingState } from "@/components/ui/States";
 import futureEventService from "@/services/futureEventService";
 import { useAppStore } from "@/store/appStore";
 import { EventType, FutureEvent, ReminderOption } from "@/types";
@@ -132,11 +132,11 @@ const GUIDED_TRIGGER_PHRASES = [
 
 const GUIDED_STEP_PROMPTS: Record<GuidedStep, string> = {
   0: "Tap the mic or type below to begin",
-  1: "🎤 What is the event?",
-  2: "📅 When is it? (e.g. next Friday, June 20)",
-  3: "⏰ What time? (e.g. 7 PM, morning)",
-  4: "📍 Where? (say or type 'skip' to skip)",
-  5: "✅ Confirm your event",
+  1: " What is the event?",
+  2: " When is it? (e.g. next Friday, June 20)",
+  3: " What time? (e.g. 7 PM, morning)",
+  4: " Where? (say or type 'skip' to skip)",
+  5: " Confirm your event",
 };
 
 export default function FutureEventScreen() {
@@ -146,10 +146,10 @@ export default function FutureEventScreen() {
 
   // Active Panel: 'voice' | 'add' | null
   const [activePanel, setActivePanel] = useState<"voice" | "add" | null>(null);
-  
+
   // Segmented Active Tab
   const [activeTab, setActiveTab] = useState<"this_week" | "upcoming" | "completed">("this_week");
-  
+
   // Expandable Event Card Details
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
@@ -159,7 +159,7 @@ export default function FutureEventScreen() {
   const pendingEvents = events.filter((e) => !e.completedAt);
   const doneCount = completedEvents.length;
   const pendingCount = pendingEvents.length;
-  
+
   const overdueCount = pendingEvents.filter((e) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -167,7 +167,7 @@ export default function FutureEventScreen() {
     event.setHours(0, 0, 0, 0);
     return event.getTime() < today.getTime();
   }).length;
-  
+
   const completionRate = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
 
   // ── Voice template state ──────────────────────────────────────────────────
@@ -181,7 +181,8 @@ export default function FutureEventScreen() {
   // Real voice recognition state
   const [isListening, setIsListening] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [webRecognitionInstance, setWebRecognitionInstance] = useState<any>(null);
+  // Ref to the live Web Speech instance so it can be stopped without stale state
+  const webRecognitionRef = useRef<any>(null);
 
   // ── v2: Bilingual & finalization state ───────────────────────────────────
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("quick");
@@ -190,6 +191,8 @@ export default function FutureEventScreen() {
   const [autoLangLocked, setAutoLangLocked] = useState(false);
   // Raw transcript buffer from mic — parsed only after finalization gate
   const [transcriptBuffer, setTranscriptBuffer] = useState("");
+  // Ref mirror of transcriptBuffer — avoids stale-closure in callbacks
+  const transcriptBufferRef = useRef("");
   // useRef for silence timer to avoid stale-closure issues
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -218,7 +221,7 @@ export default function FutureEventScreen() {
   const [composerSendToSpouse, setComposerSendToSpouse] = useState(false);
   const [composerIsShared, setComposerIsShared] = useState(false);
   const [composerIsRecurringYearly, setComposerIsRecurringYearly] = useState(false);
-  
+
   // Sub-modals for Composer
   const [showDateCalendar, setShowDateCalendar] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -247,8 +250,9 @@ export default function FutureEventScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
-  // v2: Speech recognition effect — depends on voiceLang so the Web Speech
-  //     instance is recreated when the user changes language.
+  // Speech recognition effect — native branch only.
+  // Web Speech is instantiated fresh in startVoiceRecognition on every start
+  // to avoid InvalidStateError when reusing an ended instance.
   useEffect(() => {
     const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
 
@@ -259,8 +263,9 @@ export default function FutureEventScreen() {
       Voice.onSpeechStart = () => {
         setIsListening(true);
         setVoiceError(null);
+        transcriptBufferRef.current = "";
         setTranscriptBuffer("");
-        setAutoLangLocked(false); // reset lock for new session
+        setAutoLangLocked(false);
       };
 
       // Layer 1: onSpeechEnd → immediately flush
@@ -285,51 +290,11 @@ export default function FutureEventScreen() {
         Voice.destroy().then(() => Voice.removeAllListeners())
           .catch((err: any) => console.error("Voice destroy error:", err));
       };
-    } else if (Platform.OS === "web") {
-      // ── Web branch (SpeechRecognition API) ──────────────────────────────
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) return;
-
-      const rec = new SpeechRecognition();
-      rec.continuous = false;
-      rec.interimResults = true;
-      rec.lang = voiceLang; // v2: uses active language
-
-      rec.onstart = () => {
-        setIsListening(true);
-        setVoiceError(null);
-        setTranscriptBuffer("");
-        setAutoLangLocked(false);
-      };
-
-      // Layer 1: onend → flush immediately
-      rec.onend = () => handleSpeechEnd();
-
-      rec.onerror = (e: any) => {
-        console.error("Web SpeechRecognition error:", e);
-        setVoiceError(e.error || "Speech recognition error");
-        setIsListening(false);
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      };
-
-      // Layer 2: onresult → buffer + reset 2.5 s timer
-      rec.onresult = (e: any) => {
-        const segments: string[] = [];
-        for (let i = 0; i < e.results.length; i++) {
-          segments.push(e.results[i][0].transcript.trim());
-        }
-        const fullTranscript = segments.filter(Boolean).join(" ");
-        if (fullTranscript.trim()) handleTranscriptUpdate(fullTranscript);
-      };
-
-      setWebRecognitionInstance(rec);
-
-      return () => {
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        try { rec.abort(); } catch (_) {}
-      };
     }
+
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceLang]);
 
@@ -350,21 +315,20 @@ export default function FutureEventScreen() {
   // v2 Helper Functions
   // ============================================
 
-  /**
-   * NLP Safety Gate: returns true only if the text has enough
-   * meaningful content to warrant parsing.
-   * - If a category keyword is found → always parse
-   * - If a date or time token is found → parse
-   * - Fallback: at least 3 words (covers "Dinner with Sarah")
-   */
   const hasMinimumIntent = (text: string): boolean => {
     const lower = text.toLowerCase().trim();
     if (!lower || lower.length < 5) return false;
     const hasCategoryKeyword = Object.values(TRIGGER_KEYWORDS)
       .flat().some(kw => lower.includes(kw));
     if (hasCategoryKeyword) return true;
-    const hasDateOrTime = /(today|tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[\/-]\d{1,2}|\bam\b|\bpm\b|noon|morning|afternoon|evening|night|\d{1,2}:\d{2})/.test(lower);
+    // Also check Sinhala category keywords
+    const sinhalaCategoryWords = ["ඉපදීම", "උපන්", "අවුරුදු", "විවාහ", "සාද", "සංචාරය", "සාකච්ඡා", "රැස්", "රැකියා", "ඉන්ටර්ව්යු", "නිවාඩු"];
+    if (sinhalaCategoryWords.some(w => text.includes(w))) return true;
+    const hasDateOrTime = /(today|tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[\/\-]\d{1,2}|\bam\b|\bpm\b|noon|morning|afternoon|evening|night|\d{1,2}:\d{2})/.test(lower);
     if (hasDateOrTime) return true;
+    // Sinhala date/time words
+    const hasSinhalaDateOrTime = /[\u0D80-\u0DFF]{2,}/.test(text) && /(අද|හෙට|ඊට|පස්ව|උදේ|දවල්|හවස|රෑ)/.test(text);
+    if (hasSinhalaDateOrTime) return true;
     // Fallback: meaningful sentence (3+ words)
     return lower.split(/\s+/).length >= 3;
   };
@@ -434,12 +398,18 @@ export default function FutureEventScreen() {
    * Layer 1 (onSpeechEnd) and Layer 3 (manual stop) call flushAndParse directly.
    */
   const handleTranscriptUpdate = (newTranscript: string) => {
+    // Keep both the state (for UI display) and the ref (for stale-closure-safe flush)
     setTranscriptBuffer(newTranscript);
+    transcriptBufferRef.current = newTranscript;
     detectAndLockLanguage(newTranscript);
+    // ── Real-time display: update the voice input field immediately in quick mode
+    if (voiceMode === "quick") {
+      setVoiceInputText(newTranscript);
+    }
     // Reset silence timer
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     silenceTimerRef.current = setTimeout(() => {
-      flushAndParse(newTranscript);
+      flushAndParse(transcriptBufferRef.current);
     }, 2500);
   };
 
@@ -449,7 +419,8 @@ export default function FutureEventScreen() {
    */
   const handleSpeechEnd = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    flushAndParse(transcriptBuffer);
+    // Use the ref value — immune to stale closure unlike the state variable
+    flushAndParse(transcriptBufferRef.current);
     setIsListening(false);
   };
 
@@ -459,7 +430,21 @@ export default function FutureEventScreen() {
 
   const parseNaturalTime = (text: string): { time: string; isSpecified: boolean } => {
     const lower = text.toLowerCase().trim();
-    
+
+    // ── Sinhala time keywords ──────────────────────────────────────────────
+    if (text.includes("උදේ") || text.includes("ඉර")) {
+      return { time: "09:00 AM", isSpecified: true };
+    }
+    if (text.includes("දවල්") || text.includes("රෑ12") || text.includes("දහවල")) {
+      return { time: "12:00 PM", isSpecified: true };
+    }
+    if (text.includes("හවස") || text.includes("ප.ව")) {
+      return { time: "06:00 PM", isSpecified: true };
+    }
+    if (text.includes("රෑ") || text.includes("රාත්")) {
+      return { time: "08:00 PM", isSpecified: true };
+    }
+    // ── English time keywords ──────────────────────────────────────────────
     if (lower.includes("noon")) {
       return { time: "12:00 PM", isSpecified: true };
     }
@@ -502,48 +487,48 @@ export default function FutureEventScreen() {
   const parseNaturalLocation = (text: string): { location: string; isSpecified: boolean } => {
     // Non-greedy match that terminates before another preposition or date/time keyword
     const locationMatchesAll = [...text.matchAll(/\b(at|in|near|to)\s+([a-zA-Z0-9\s'&]+?)(?=\b(at|in|on|near|to|for|with|today|tomorrow|next|this)\b|$)/gi)];
-    
+
     for (const match of locationMatchesAll) {
       const prep = match[1].toLowerCase();
       const candidate = match[2].trim();
       const lowerCandidate = candidate.toLowerCase();
-      
-      const isTimeOrDate = 
+
+      const isTimeOrDate =
         /^\d{1,2}/.test(lowerCandidate) ||
-        lowerCandidate.includes("am") || 
+        lowerCandidate.includes("am") ||
         lowerCandidate.includes("pm") ||
-        lowerCandidate.includes("today") || 
+        lowerCandidate.includes("today") ||
         lowerCandidate.includes("tomorrow") ||
         lowerCandidate.includes("yesterday") ||
-        lowerCandidate.includes("monday") || 
-        lowerCandidate.includes("tuesday") || 
-        lowerCandidate.includes("wednesday") || 
-        lowerCandidate.includes("thursday") || 
-        lowerCandidate.includes("friday") || 
-        lowerCandidate.includes("saturday") || 
+        lowerCandidate.includes("monday") ||
+        lowerCandidate.includes("tuesday") ||
+        lowerCandidate.includes("wednesday") ||
+        lowerCandidate.includes("thursday") ||
+        lowerCandidate.includes("friday") ||
+        lowerCandidate.includes("saturday") ||
         lowerCandidate.includes("sunday") ||
-        lowerCandidate.includes("january") || 
-        lowerCandidate.includes("february") || 
-        lowerCandidate.includes("march") || 
-        lowerCandidate.includes("april") || 
-        lowerCandidate.includes("may") || 
-        lowerCandidate.includes("june") || 
-        lowerCandidate.includes("july") || 
-        lowerCandidate.includes("august") || 
-        lowerCandidate.includes("september") || 
-        lowerCandidate.includes("october") || 
-        lowerCandidate.includes("november") || 
+        lowerCandidate.includes("january") ||
+        lowerCandidate.includes("february") ||
+        lowerCandidate.includes("march") ||
+        lowerCandidate.includes("april") ||
+        lowerCandidate.includes("may") ||
+        lowerCandidate.includes("june") ||
+        lowerCandidate.includes("july") ||
+        lowerCandidate.includes("august") ||
+        lowerCandidate.includes("september") ||
+        lowerCandidate.includes("october") ||
+        lowerCandidate.includes("november") ||
         lowerCandidate.includes("december") ||
-        lowerCandidate.includes("jan") || 
-        lowerCandidate.includes("feb") || 
-        lowerCandidate.includes("mar") || 
-        lowerCandidate.includes("apr") || 
-        lowerCandidate.includes("jun") || 
-        lowerCandidate.includes("jul") || 
-        lowerCandidate.includes("aug") || 
-        lowerCandidate.includes("sep") || 
-        lowerCandidate.includes("oct") || 
-        lowerCandidate.includes("nov") || 
+        lowerCandidate.includes("jan") ||
+        lowerCandidate.includes("feb") ||
+        lowerCandidate.includes("mar") ||
+        lowerCandidate.includes("apr") ||
+        lowerCandidate.includes("jun") ||
+        lowerCandidate.includes("jul") ||
+        lowerCandidate.includes("aug") ||
+        lowerCandidate.includes("sep") ||
+        lowerCandidate.includes("oct") ||
+        lowerCandidate.includes("nov") ||
         lowerCandidate.includes("dec") ||
         lowerCandidate.includes("next") ||
         lowerCandidate.includes("this") ||
@@ -558,8 +543,8 @@ export default function FutureEventScreen() {
 
       if (prep === "to") {
         const verbBlacklist = [
-          "meet", "discuss", "sync", "celebrate", "visit", "get", "have", "do", "be", 
-          "my", "your", "his", "her", "our", "their", "a", "an", "the", "see", "party", 
+          "meet", "discuss", "sync", "celebrate", "visit", "get", "have", "do", "be",
+          "my", "your", "his", "her", "our", "their", "a", "an", "the", "see", "party",
           "buy", "shop", "eat", "drink", "talk", "go", "work", "play", "share"
         ];
         const firstWord = lowerCandidate.split(/\s+/)[0];
@@ -575,7 +560,7 @@ export default function FutureEventScreen() {
         return { location, isSpecified: true };
       }
     }
-    
+
     return { location: "", isSpecified: false };
   };
 
@@ -584,6 +569,31 @@ export default function FutureEventScreen() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // ── Sinhala relative date keywords ────────────────────────────────────
+    if (text.includes("අනිද්දා") || text.includes("අනිදා")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 2);
+      return { date: d, isSpecified: true };
+    }
+    if (text.includes("හෙට")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 1);
+      return { date: d, isSpecified: true };
+    }
+    if (text.includes("අද")) {
+      return { date: new Date(today), isSpecified: true };
+    }
+    if (text.includes("ලබන සතිය") || text.includes("ලබන සතියේ")) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + 7);
+      return { date: d, isSpecified: true };
+    }
+    if (text.includes("ලබන මාසය") || text.includes("ලබන මාසේ")) {
+      const d = new Date(today);
+      d.setMonth(today.getMonth() + 1);
+      return { date: d, isSpecified: true };
+    }
+    // ── English relative date keywords ────────────────────────────────────
     if (str.includes("day after tomorrow")) {
       const d = new Date(today);
       d.setDate(today.getDate() + 2);
@@ -619,13 +629,13 @@ export default function FutureEventScreen() {
       if (str.includes(dayName)) {
         const isNext = str.includes(`next ${dayName}`);
         const isThis = str.includes(`this ${dayName}`);
-        
+
         const currentDayOfWeek = today.getDay();
         const targetDayOfWeek = i;
-        
+
         let daysToAdd = 0;
         const diff = targetDayOfWeek - currentDayOfWeek;
-        
+
         if (isNext) {
           daysToAdd = diff + 7;
           if (diff < 0) {
@@ -650,7 +660,7 @@ export default function FutureEventScreen() {
           }
           daysToAdd = upcomingDiff;
         }
-        
+
         const d = new Date(today);
         d.setDate(today.getDate() + daysToAdd);
         return { date: d, isSpecified: true };
@@ -679,10 +689,10 @@ export default function FutureEventScreen() {
       const monthName = monthMatch[1];
       const monthIndex = monthsMap[monthName];
       const numbers = cleaned.match(/\b\d+/g) || [];
-      
+
       let day = today.getDate();
       let year = today.getFullYear();
-      
+
       let dayFound = false;
       for (const numStr of numbers) {
         const num = parseInt(numStr, 10);
@@ -693,7 +703,7 @@ export default function FutureEventScreen() {
           dayFound = true;
         }
       }
-      
+
       let parsedDate = new Date(year, monthIndex, day);
       if (parsedDate < today && !cleaned.includes(String(year))) {
         parsedDate.setFullYear(year + 1);
@@ -745,15 +755,28 @@ export default function FutureEventScreen() {
       if (!isNaN(fallback.getTime())) {
         return { date: fallback, isSpecified: true };
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return { date: today, isSpecified: false };
   };
 
+  // Sinhala keyword → EventType mapping (used in parseNaturalLanguageEvent)
+  const SINHALA_EVENT_KEYWORDS: Record<EventType, string[]> = {
+    Birthday: ["උපන්", "ඉපදීම", "ඉපදුනු", "ජන්ම"],
+    Anniversary: ["සංවත්සර", "විවාහ", "අවු"],
+    Wedding: ["විවාහ", "මංගල", "කසාද"],
+    Party: ["සාද", "සාදය", "ආහාර", "ගෑනිසිංහ"],
+    Vacation: ["නිවාඩු", "සංචාරය", "ගමනක්", "ගිය"],
+    Interview: ["ඉන්ටර්ව්යු", "රැකියා", "සාකච්ඡා"],
+    Meeting: ["රැස්", "රැස්වීම", "සාකච්ඡා", "මීටිං"],
+    Other: [],
+  };
+
   const parseNaturalLanguageEvent = (text: string): VoicePreview => {
     const lower = text.toLowerCase().trim();
-    
+
     let type: EventType = "Other";
+    // Check English keywords first
     for (const key of Object.keys(TRIGGER_KEYWORDS) as EventType[]) {
       const words = TRIGGER_KEYWORDS[key];
       if (words.some((word) => lower.includes(word))) {
@@ -761,27 +784,37 @@ export default function FutureEventScreen() {
         break;
       }
     }
-    
+    // If still Other, check Sinhala keywords
+    if (type === "Other") {
+      for (const key of Object.keys(SINHALA_EVENT_KEYWORDS) as EventType[]) {
+        const words = SINHALA_EVENT_KEYWORDS[key];
+        if (words.some((word) => text.includes(word))) {
+          type = key;
+          break;
+        }
+      }
+    }
+
     const locResult = parseNaturalLocation(text);
     const location = locResult.location;
     const isLocationSpecified = locResult.isSpecified;
-    
+
     const dateResult = parseNaturalDateWithSpec(text);
     let date = dateResult.date;
     const isDateSpecified = dateResult.isSpecified;
-    
+
     const timeResult = parseNaturalTime(text);
     const time = timeResult.time || "10:00 AM";
     const isTimeSpecified = timeResult.isSpecified;
-    
+
     // Build cleaned title (same logic as before, then normalize mixed-script)
     let title = text;
     title = title.replace(/^(i\s+have\s+an?\s+|it's\s+|she\s+has\s+an?\s+|he\s+has\s+an?\s+)/i, "");
     title = title.replace(/\b(day after tomorrow|tomorrow|today|next week|next month|next year)\b/gi, "");
-    
+
     const weekdaysRegex = /\b(next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/gi;
     title = title.replace(weekdaysRegex, "");
-    
+
     const monthNamesRegex = /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b\s*\d{1,2}(st|nd|rd|th)?/gi;
     const dayMonthRegex = /\b\d{1,2}(st|nd|rd|th)?\s*(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/gi;
     const numDateRegex = /\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/g;
@@ -790,10 +823,10 @@ export default function FutureEventScreen() {
     title = title.replace(dayMonthRegex, "");
     title = title.replace(numDateRegex, "");
     title = title.replace(numDateRegex2, "");
-    
+
     title = title.replace(/(\bat\s+)?\d{1,2}([:.]\d{2})?\s*(am|pm)/gi, "");
     title = title.replace(/\b(noon|midnight|morning|afternoon|evening|night)\b/gi, "");
-    
+
     if (location) {
       if (type === "Vacation" && text.toLowerCase().includes("to " + location.toLowerCase())) {
         // keep vacation destination
@@ -805,38 +838,38 @@ export default function FutureEventScreen() {
         title = title.replace(locRegex2, "");
       }
     }
-    
+
     title = title.replace(/\b(on|at|in|near|to|for|with)\s*$/gi, "");
     title = title.replace(/\s+/g, " ").trim();
-    
+
     // v2: Apply mixed-script normalization for the display title;
     //     titleRaw preserves the original transcript unchanged.
     const rawTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
     const finalTitle = normalizeMixedTitle(rawTitle);
-    
+
     let isRecurringYearly = false;
     if (type === "Birthday" || type === "Anniversary") {
       isRecurringYearly = true;
       date = normalizeBirthdayDate(date);
     }
-    
+
     let confidenceScore = 0;
     if (finalTitle && finalTitle.trim().length > 0) confidenceScore += 30;
     if (isDateSpecified) confidenceScore += 30;
     if (isTimeSpecified) confidenceScore += 20;
     if (isLocationSpecified) confidenceScore += 20;
-    
+
     let confidenceLevel: "High" | "Medium" | "Needs Review" = "Needs Review";
     if (confidenceScore >= 80) confidenceLevel = "High";
     else if (confidenceScore >= 50) confidenceLevel = "Medium";
-    
-    return { 
+
+    return {
       title: finalTitle,
       titleRaw: text,          // always preserve original
-      type, 
-      date, 
-      time, 
-      location, 
+      type,
+      date,
+      time,
+      location,
       isRecurringYearly,
       isDateSpecified,
       isTimeSpecified,
@@ -869,17 +902,60 @@ export default function FutureEventScreen() {
       await stopVoiceRecognition();
       return;
     }
-    
+
     if (Platform.OS === "web") {
-      if (webRecognitionInstance) {
-        try {
-          webRecognitionInstance.start();
-        } catch (e) {
-          console.error("Failed to start web recognition:", e);
-        }
-      } else {
+      // Instantiate a fresh SpeechRecognition on every start to avoid
+      // InvalidStateError from reusing an ended/aborted instance.
+      const SpeechRecognitionAPI =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognitionAPI) {
         Alert.alert("Not Supported", "Speech recognition is not supported in this browser.");
+        return;
       }
+
+      const rec = new SpeechRecognitionAPI();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = voiceLang;
+
+      rec.onstart = () => {
+        setIsListening(true);
+        setVoiceError(null);
+        transcriptBufferRef.current = "";
+        setTranscriptBuffer("");
+        setAutoLangLocked(false);
+      };
+
+      rec.onend = () => handleSpeechEnd();
+
+      rec.onerror = (e: any) => {
+        // "no-speech" is benign — user just didn't speak
+        if (e.error === "no-speech") {
+          setIsListening(false);
+          return;
+        }
+        console.error("Web SpeechRecognition error:", e);
+        setVoiceError(e.error || "Speech recognition error");
+        setIsListening(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      };
+
+      rec.onresult = (e: any) => {
+        const segments: string[] = [];
+        for (let i = 0; i < e.results.length; i++) {
+          segments.push(e.results[i][0].transcript.trim());
+        }
+        const fullTranscript = segments.filter(Boolean).join(" ");
+        if (fullTranscript.trim()) handleTranscriptUpdate(fullTranscript);
+      };
+
+      webRecognitionRef.current = rec;
+      try {
+        rec.start();
+      } catch (e) {
+        console.error("Failed to start web recognition:", e);
+      }
+      return;
     } else {
       const isNativeModuleAvailable = !!(NativeModules.Voice && NativeModules.Voice.startSpeech);
       if (!isNativeModuleAvailable) {
@@ -924,15 +1000,16 @@ export default function FutureEventScreen() {
   };
 
   const stopVoiceRecognition = async () => {
-    // Layer 3: Manual stop — flush buffered transcript immediately
+    // Layer 3: Manual stop — flush buffered transcript immediately (use ref)
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    flushAndParse(transcriptBuffer);
+    flushAndParse(transcriptBufferRef.current);
 
     if (Platform.OS === "web") {
-      if (webRecognitionInstance) {
-        try { webRecognitionInstance.stop(); } catch (e) {
+      if (webRecognitionRef.current) {
+        try { webRecognitionRef.current.stop(); } catch (e) {
           console.error("Failed to stop web recognition:", e);
         }
+        webRecognitionRef.current = null;
       }
     } else {
       try {
@@ -1155,9 +1232,9 @@ export default function FutureEventScreen() {
       prev.map((e) =>
         e.id === event.id
           ? {
-              ...e,
-              completedAt: e.completedAt ? undefined : new Date().toISOString(),
-            }
+            ...e,
+            completedAt: e.completedAt ? undefined : new Date().toISOString(),
+          }
           : e
       )
     );
@@ -1283,16 +1360,16 @@ export default function FutureEventScreen() {
           const date = new Date(e.eventDate);
           return date < endOfWeek;
         }).sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
-        
+
       case "upcoming":
         return pendingEvents.filter((e) => {
           const date = new Date(e.eventDate);
           return date >= endOfWeek;
         }).sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
-        
+
       case "completed":
         return completedEvents.sort((a, b) => new Date(b.completedAt || b.eventDate).getTime() - new Date(a.completedAt || a.eventDate).getTime());
-        
+
       default:
         return events;
     }
@@ -1345,19 +1422,19 @@ export default function FutureEventScreen() {
             <Text style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}>
               {item.title}
             </Text>
-            
+
             <View style={styles.taskMeta}>
               <View style={styles.metaRow}>
                 <Text style={styles.categoryIconText}>{EVENT_ICONS[item.type]}</Text>
                 <Text style={styles.metaLabelText}>{item.type}</Text>
               </View>
-              
+
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabelText}>
                   📅 {formatDate(item.eventDate)}
                 </Text>
               </View>
-              
+
               {item.eventTime && (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabelText}>⏰ {item.eventTime}</Text>
@@ -1369,7 +1446,7 @@ export default function FutureEventScreen() {
                   ⚠️ Overdue
                 </Text>
               )}
-              
+
               {!isCompleted && !isOverdue && daysUntil >= 0 && (
                 <View style={[styles.sectionBadge, { backgroundColor: EVENT_COLORS[item.type] + "20" }]}>
                   <Text style={[styles.sectionBadgeText, { color: EVENT_COLORS[item.type] }]}>
@@ -1465,7 +1542,7 @@ export default function FutureEventScreen() {
       <Stack.Screen options={{ title: "Future Events", headerShown: true }} />
       <View style={styles.container}>
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          
+
           {/* Header Productivity Card */}
           <View style={[styles.headerCard, { backgroundColor: "#2563EB", borderColor: "#2563EB", borderRadius: 16 }]}>
             <View style={styles.headerTopRow}>
@@ -1473,14 +1550,14 @@ export default function FutureEventScreen() {
                 <Text style={[styles.greetingTitle, { color: "#93C5FD" }]}>Your Future Events</Text>
                 <Text style={[styles.greetingSubtitle, { color: "#FFFFFF", fontSize: 13, fontWeight: "500", marginTop: 4 }]}>Stay on top of your schedule!</Text>
               </View>
-              
+
               {/* Dynamic Progress Ring */}
               <View style={[styles.progressCircle, { borderColor: "#60A5FA", backgroundColor: "rgba(255,255,255,0.1)" }]}>
                 <Text style={[styles.progressPercentText, { color: "#FFFFFF" }]}>{Math.round(completionRate)}%</Text>
                 <Text style={[styles.progressSubtext, { color: "#93C5FD" }]}>Done</Text>
               </View>
             </View>
-            
+
             {/* Quick Stat Chips */}
             <View style={styles.statChipsRow}>
               <StatChip
@@ -1503,14 +1580,14 @@ export default function FutureEventScreen() {
 
           {/* Permanent Action Panels */}
           <View style={styles.panelsContainer}>
-            
+
             {/* Voice Templates Panel */}
             <View style={[
-              styles.permanentCard, 
-              styles.voiceCard, 
+              styles.permanentCard,
+              styles.voiceCard,
               activePanel === 'voice' && styles.permanentCardActiveVoice
             ]}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.permanentCardHeader}
                 onPress={() => setActivePanel(activePanel === 'voice' ? null : 'voice')}
               >
@@ -1521,13 +1598,13 @@ export default function FutureEventScreen() {
                     <Text style={styles.panelSubtitle}>Create events in natural language</Text>
                   </View>
                 </View>
-                <MaterialCommunityIcons 
-                  name={activePanel === 'voice' ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color="#7C3AED" 
+                <MaterialCommunityIcons
+                  name={activePanel === 'voice' ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#7C3AED"
                 />
               </TouchableOpacity>
-              
+
               {activePanel === 'voice' && (
                 <View style={styles.panelContent}>
 
@@ -1833,11 +1910,11 @@ export default function FutureEventScreen() {
 
             {/* Add Event Panel */}
             <View style={[
-              styles.permanentCard, 
-              styles.addCard, 
+              styles.permanentCard,
+              styles.addCard,
               activePanel === 'add' && styles.permanentCardActiveAdd
             ]}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.permanentCardHeader}
                 onPress={() => setActivePanel(activePanel === 'add' ? null : 'add')}
               >
@@ -1848,16 +1925,16 @@ export default function FutureEventScreen() {
                     <Text style={styles.panelSubtitle}>Create a new event manually</Text>
                   </View>
                 </View>
-                <MaterialCommunityIcons 
-                  name={activePanel === 'add' ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color="#2563EB" 
+                <MaterialCommunityIcons
+                  name={activePanel === 'add' ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#2563EB"
                 />
               </TouchableOpacity>
-              
+
               {activePanel === 'add' && (
                 <View style={styles.panelContent}>
-                  
+
                   <Text style={styles.label}>Event Type</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typesScroll}>
                     <View style={styles.typesRow}>
@@ -1923,15 +2000,15 @@ export default function FutureEventScreen() {
                   </View>
 
                   {/* Accordion header */}
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.accordionHeader}
                     onPress={() => setShowMoreOptions(!showMoreOptions)}
                   >
                     <Text style={styles.accordionTitle}>⚙️ More Options</Text>
-                    <MaterialCommunityIcons 
-                      name={showMoreOptions ? "chevron-up" : "chevron-down"} 
-                      size={18} 
-                      color="#4B5563" 
+                    <MaterialCommunityIcons
+                      name={showMoreOptions ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color="#4B5563"
                     />
                   </TouchableOpacity>
 
@@ -2019,7 +2096,7 @@ export default function FutureEventScreen() {
                     </View>
                   )}
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.saveButton}
                     onPress={handleSaveManualEvent}
                   >
@@ -2146,7 +2223,7 @@ export default function FutureEventScreen() {
               placeholder="e.g. 3:30 PM or 15:30"
               placeholderTextColor="#9CA3AF"
             />
-            
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonCancel]}
@@ -2181,9 +2258,9 @@ export default function FutureEventScreen() {
                 <MaterialCommunityIcons name="close" size={24} color="#374151" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              
+
               <Text style={styles.label}>Event Title *</Text>
               <TextInput
                 style={styles.input}
@@ -2325,7 +2402,7 @@ export default function FutureEventScreen() {
                 />
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleSaveEditEvent}
               >
@@ -2388,7 +2465,7 @@ export default function FutureEventScreen() {
               placeholder="e.g. 3:30 PM"
               placeholderTextColor="#9CA3AF"
             />
-            
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonCancel]}

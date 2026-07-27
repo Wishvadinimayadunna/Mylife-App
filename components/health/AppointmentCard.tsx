@@ -30,6 +30,7 @@ interface Props {
 
 const ACCENT = "#2563EB";
 const GREEN = "#059669";
+const RED = "#EF4444";
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
@@ -37,18 +38,11 @@ const MONTH_NAMES = [
 ];
 const DAY_HEADERS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
 
-// Common dosage presets
+// Dosage frequency presets
 const DOSAGE_PRESETS = [
   "Once daily",
   "Twice daily",
   "Three times daily",
-  "Morning & Night",
-  "Every 8 hours",
-  "Every 6 hours",
-  "As needed",
-  "Before meals",
-  "After meals",
-  "At bedtime",
 ];
 
 // ── Inline calendar ───────────────────────────────────────────────────────────
@@ -213,9 +207,154 @@ function DosageDropdown({
   );
 }
 
+// ── Edit/Add Modal (extracted for clarity) ────────────────────────────────────
+function EditModal({
+  visible,
+  editingId,
+  doctorName,
+  setDoctorName,
+  selectedDate,
+  setSelectedDate,
+  reason,
+  setReason,
+  prescription,
+  saving,
+  onAddRow,
+  onRemoveRow,
+  onUpdateMedicine,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  editingId: string | null;
+  doctorName: string;
+  setDoctorName: (v: string) => void;
+  selectedDate: Date | null;
+  setSelectedDate: (d: Date) => void;
+  reason: string;
+  setReason: (v: string) => void;
+  prescription: PrescriptionItem[];
+  saving: boolean;
+  onAddRow: () => void;
+  onRemoveRow: (i: number) => void;
+  onUpdateMedicine: (i: number, field: "medicineName" | "dosage", v: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={s.overlay}>
+        <View style={s.sheet}>
+          <View style={s.sheetHandle} />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            <Text style={s.sheetTitle}>{editingId ? "Edit Doctor Visit" : "Log Doctor Visit"}</Text>
+            <Text style={s.sheetSub}>Fill in the details from your appointment</Text>
+
+            {/* Doctor Name */}
+            <Text style={s.fieldLabel}>Doctor Name *</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. Dr. Silva"
+              placeholderTextColor="#9CA3AF"
+              value={doctorName}
+              onChangeText={setDoctorName}
+            />
+
+            {/* Date — inline calendar */}
+            <View style={s.dateHeaderRow}>
+              <Text style={s.fieldLabel}>Date *</Text>
+              {selectedDate && (
+                <View style={s.dateChip}>
+                  <Text style={s.dateChipTxt}>
+                    {selectedDate.toLocaleDateString("en-GB", {
+                      day: "2-digit", month: "short", year: "numeric",
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <CalendarPicker selected={selectedDate} onSelect={setSelectedDate} />
+
+            {/* Reason */}
+            <Text style={[s.fieldLabel, { marginTop: 16 }]}>What is it for?</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. Fever, routine checkup…"
+              placeholderTextColor="#9CA3AF"
+              value={reason}
+              onChangeText={setReason}
+            />
+
+            {/* Prescription */}
+            <View style={s.prescriptionHeader}>
+              <Text style={s.fieldLabel}>Prescription</Text>
+              <TouchableOpacity onPress={onAddRow} style={s.addRowBtn}>
+                <Text style={s.addRowBtnTxt}>+ Add Medicine</Text>
+              </TouchableOpacity>
+            </View>
+
+            {prescription.map((item, idx) => (
+              <View key={idx} style={s.medBlock}>
+                {/* Medicine name row */}
+                <View style={s.medNameRow}>
+                  <TextInput
+                    style={[s.input, { flex: 1, marginBottom: 6 }]}
+                    placeholder={`Medicine ${idx + 1} name`}
+                    placeholderTextColor="#9CA3AF"
+                    value={item.medicineName}
+                    onChangeText={(v) => onUpdateMedicine(idx, "medicineName", v)}
+                  />
+                  {prescription.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => onRemoveRow(idx)}
+                      style={s.removeBtn}
+                    >
+                      <Text style={s.removeBtnTxt}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Dosage dropdown */}
+                <DosageDropdown
+                  value={item.dosage}
+                  onChange={(v) => onUpdateMedicine(idx, "dosage", v)}
+                />
+
+                {/* Divider between medicines */}
+                {idx < prescription.length - 1 && <View style={s.medDivider} />}
+              </View>
+            ))}
+
+            <Text style={s.prescriptionNote}>
+              💡 Medicines will appear in your daily Medicine checklist
+            </Text>
+
+            {/* Actions */}
+            <TouchableOpacity
+              style={[s.saveBtn, saving && { opacity: 0.6 }]}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={s.saveBtnTxt}>{saving ? "Saving…" : editingId ? "Update Visit" : "Save Visit"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={s.cancelBtn}>
+              <Text style={s.cancelBtnTxt}>Cancel</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AppointmentCard({ appointments, onSaved }: Props) {
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form state
   const [doctorName, setDoctorName] = useState("");
@@ -232,9 +371,10 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
     setReason("");
     setPrescription([{ medicineName: "", dosage: "" }]);
     setSaving(false);
+    setEditingId(null);
   };
 
-  const openModal = () => { resetForm(); setShowModal(true); };
+  const openAddModal = () => { resetForm(); setShowModal(true); };
   const closeModal = () => { setShowModal(false); resetForm(); };
 
   const addMedicineRow = () =>
@@ -258,28 +398,29 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
       return;
     }
 
-    // Only include medicines that have a name
     const validMeds = prescription.filter((m) => m.medicineName.trim() !== "");
+    const payload: any = {
+      doctorName: doctorName.trim(),
+      appointmentDate: selectedDate,
+      appointmentTime: "",
+      reason: reason.trim(),
+      reminderEnabled: false,
+      prescription: validMeds.map((m) => ({
+        medicineName: m.medicineName.trim(),
+        dosage: m.dosage.trim(),
+      })),
+    };
 
     setSaving(true);
     try {
-      // ⚠️ Do NOT send userId — backend reads it from the auth token.
-      // Sending an empty userId would overwrite req.userId and break the save.
-      await healthService.addAppointment({
-        doctorName: doctorName.trim(),
-        appointmentDate: selectedDate,
-        appointmentTime: "",        // field no longer shown in UI, kept optional in schema
-        reason: reason.trim(),
-        reminderEnabled: false,
-        prescription: validMeds.map((m) => ({
-          medicineName: m.medicineName.trim(),
-          dosage: m.dosage.trim(),
-        })),
-      } as any);
-
+      if (editingId) {
+        await healthService.updateAppointment(editingId, payload);
+      } else {
+        await healthService.addAppointment(payload);
+      }
       setShowModal(false);
       resetForm();
-      onSaved(); // reload all health data so Medicine card updates
+      onSaved();
     } catch (e: any) {
       console.error("Save appointment error:", e?.response?.data || e?.message || e);
       Alert.alert("Error", "Could not save appointment. Please try again.");
@@ -298,7 +439,7 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
       {/* Header */}
       <View style={s.headerRow}>
         <Text style={s.sectionLabel}>DOCTOR VISITS</Text>
-        <TouchableOpacity style={s.addBtn} onPress={openModal} activeOpacity={0.8}>
+        <TouchableOpacity style={s.addBtn} onPress={openAddModal} activeOpacity={0.8}>
           <Text style={s.addBtnTxt}>+ Log Visit</Text>
         </TouchableOpacity>
       </View>
@@ -318,6 +459,7 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
               day: "2-digit", month: "short", year: "numeric",
             });
             const medCount = (apt.prescription || []).length;
+            const aptId = apt._id || apt.id;
             return (
               <View
                 key={apt._id || idx}
@@ -338,119 +480,81 @@ export default function AppointmentCard({ appointments, onSaved }: Props) {
                     <Text style={s.pillBadgeTxt}>💊 {medCount}</Text>
                   </View>
                 )}
+                {/* Edit button */}
+                <TouchableOpacity
+                  style={s.iconBtn}
+                  onPress={() => {
+                    setDoctorName(apt.doctorName || "");
+                    setSelectedDate(apt.appointmentDate ? new Date(apt.appointmentDate) : null);
+                    setReason(apt.reason || "");
+                    setPrescription(
+                      (apt.prescription || []).length > 0
+                        ? apt.prescription.map((p: any) => ({
+                            medicineName: p.medicineName || "",
+                            dosage: p.dosage || "",
+                          }))
+                        : [{ medicineName: "", dosage: "" }]
+                    );
+                    setSaving(false);
+                    setEditingId(aptId);
+                    setShowModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.iconBtnTxt}>✏️</Text>
+                </TouchableOpacity>
+                {/* Delete button */}
+                <TouchableOpacity
+                  style={[s.iconBtn, s.iconBtnDel]}
+                  onPress={() => {
+                    Alert.alert(
+                      "Delete Visit",
+                      `Remove visit with ${apt.doctorName}?`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: async () => {
+                            try {
+                              await healthService.deleteAppointment(aptId);
+                              onSaved();
+                            } catch {
+                              Alert.alert("Error", "Could not delete visit.");
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.iconBtnTxt}>🗑️</Text>
+                </TouchableOpacity>
               </View>
             );
           })
         )}
       </AppCard>
 
-      {/* ── Add Visit Modal ── */}
-      <Modal visible={showModal} transparent animationType="slide" onRequestClose={closeModal}>
-        <View style={s.overlay}>
-          <View style={s.sheet}>
-            <View style={s.sheetHandle} />
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              <Text style={s.sheetTitle}>Log Doctor Visit</Text>
-              <Text style={s.sheetSub}>Fill in the details from your appointment</Text>
-
-              {/* Doctor Name */}
-              <Text style={s.fieldLabel}>Doctor Name *</Text>
-              <TextInput
-                style={s.input}
-                placeholder="e.g. Dr. Silva"
-                placeholderTextColor="#9CA3AF"
-                value={doctorName}
-                onChangeText={setDoctorName}
-              />
-
-              {/* Date — inline calendar */}
-              <View style={s.dateHeaderRow}>
-                <Text style={s.fieldLabel}>Date *</Text>
-                {selectedDate && (
-                  <View style={s.dateChip}>
-                    <Text style={s.dateChipTxt}>
-                      {selectedDate.toLocaleDateString("en-GB", {
-                        day: "2-digit", month: "short", year: "numeric",
-                      })}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <CalendarPicker selected={selectedDate} onSelect={setSelectedDate} />
-
-              {/* Reason */}
-              <Text style={[s.fieldLabel, { marginTop: 16 }]}>What is it for?</Text>
-              <TextInput
-                style={s.input}
-                placeholder="e.g. Fever, routine checkup…"
-                placeholderTextColor="#9CA3AF"
-                value={reason}
-                onChangeText={setReason}
-              />
-
-              {/* Prescription */}
-              <View style={s.prescriptionHeader}>
-                <Text style={s.fieldLabel}>Prescription</Text>
-                <TouchableOpacity onPress={addMedicineRow} style={s.addRowBtn}>
-                  <Text style={s.addRowBtnTxt}>+ Add Medicine</Text>
-                </TouchableOpacity>
-              </View>
-
-              {prescription.map((item, idx) => (
-                <View key={idx} style={s.medBlock}>
-                  {/* Medicine name row */}
-                  <View style={s.medNameRow}>
-                    <TextInput
-                      style={[s.input, { flex: 1, marginBottom: 6 }]}
-                      placeholder={`Medicine ${idx + 1} name`}
-                      placeholderTextColor="#9CA3AF"
-                      value={item.medicineName}
-                      onChangeText={(v) => updateMedicine(idx, "medicineName", v)}
-                    />
-                    {prescription.length > 1 && (
-                      <TouchableOpacity
-                        onPress={() => removeMedicineRow(idx)}
-                        style={s.removeBtn}
-                      >
-                        <Text style={s.removeBtnTxt}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Dosage dropdown */}
-                  <DosageDropdown
-                    value={item.dosage}
-                    onChange={(v) => updateMedicine(idx, "dosage", v)}
-                  />
-
-                  {/* Divider between medicines */}
-                  {idx < prescription.length - 1 && <View style={s.medDivider} />}
-                </View>
-              ))}
-
-              <Text style={s.prescriptionNote}>
-                💡 Medicines will appear in your daily Medicine checklist
-              </Text>
-
-              {/* Actions */}
-              <TouchableOpacity
-                style={[s.saveBtn, saving && { opacity: 0.6 }]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                <Text style={s.saveBtnTxt}>{saving ? "Saving…" : "Save Visit"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={closeModal} style={s.cancelBtn}>
-                <Text style={s.cancelBtnTxt}>Cancel</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      {/* ── Add / Edit Visit Modal ── */}
+      <EditModal
+        visible={showModal}
+        editingId={editingId}
+        doctorName={doctorName}
+        setDoctorName={setDoctorName}
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
+        reason={reason}
+        setReason={setReason}
+        prescription={prescription}
+        saving={saving}
+        onAddRow={addMedicineRow}
+        onRemoveRow={removeMedicineRow}
+        onUpdateMedicine={updateMedicine}
+        onClose={closeModal}
+        onSave={handleSave}
+      />
     </View>
   );
 }
@@ -671,4 +775,12 @@ const s = StyleSheet.create({
   saveBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "600" },
   cancelBtn: { alignItems: "center", paddingVertical: 8 },
   cancelBtnTxt: { fontSize: 13, color: "#6B7280" },
+
+  // Edit/Delete icon buttons
+  iconBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center",
+  },
+  iconBtnDel: { backgroundColor: "#FEF2F2" },
+  iconBtnTxt: { fontSize: 14 },
 });

@@ -64,15 +64,19 @@ export default function HealthScreen() {
   const todayWater = waterLogs.filter(l => new Date(l.recordedAt || l.createdAt).toDateString() === today.toDateString()).reduce((s, l) => s + l.amountML, 0);
   const todaySleep = sleepLogs.filter(l => new Date(l.recordedAt || l.createdAt).toDateString() === today.toDateString()).reduce((_, l) => l.durationHours, 0);
   const enabledMeds = medicines.filter(m => m.isEnabled);
-  const medsTaken = enabledMeds.filter(m => m.takenDates?.includes(todayStr)).length;
-  const medsCompliance = enabledMeds.length > 0 ? medsTaken / enabledMeds.length : 0;
+  // Count doses taken today using per-dose keys (e.g. "2024-01-21_dose1") to match QuickActionBar
+  const doseCountFn = (dosage?: string) => { const d = (dosage || "").toLowerCase(); if (d.includes("three")) return 3; if (d.includes("twice")) return 2; return 1; };
+  const totalDoseSlots = enabledMeds.reduce((s, m) => s + doseCountFn(m.dosage), 0);
+  const takenDoseSlots = enabledMeds.reduce((s, m) => { const c = doseCountFn(m.dosage); let t = 0; for (let i = 1; i <= c; i++) { if (m.takenDates?.includes(`${todayStr}_dose${i}`)) t++; } return s + t; }, 0);
+  const medsCompliance = totalDoseSlots > 0 ? takenDoseSlots / totalDoseSlots : 0;
   const moodToday = moods.find(m => new Date(m.recordDate || m.createdAt).toDateString() === today.toDateString());
   const hasSevere = symptoms.some(s => new Date(s.recordDate || s.createdAt).toDateString() === today.toDateString() && s.severity === "Severe");
   const score = Math.round(Math.min(todayWater / 2000, 1) * 25 + (todaySleep > 0 ? Math.min(todaySleep / 8, 1) * 25 : 0) + medsCompliance * 25 + (moodToday ? 25 : 0));
 
   const handleWater = async () => { try { const l = await healthService.addWaterLog(250); setWaterLogs(p => [l, ...p]); } catch {} };
   const handleSleep = async (h: number) => { try { const l = await healthService.addSleepLog(h); setSleepLogs(p => [l, ...p]); } catch {} };
-  const handleMed = async (id: string, taken: boolean) => { try { const u = await healthService.logMedicineTaken(id, todayStr, taken); setMedicines(p => p.map(m => (m._id || m.id) === id ? { ...m, takenDates: u.takenDates } : m)); } catch {} };
+  // Dose toggling is handled inside QuickActionBar directly; this callback refreshes local state
+  const handleMed = async (_id: string, _taken: boolean) => { try { await loadAll(); } catch {} };
   const handleMood = async (mood: string) => { try { await healthService.addMood({ profileID: profile?.id || "", mood: mood as any, recordDate: new Date() }); const m = await healthService.getMoods(); setMoods(m); } catch {} };
   const handleDelete = async (entry: any) => {
     try {
@@ -199,7 +203,7 @@ export default function HealthScreen() {
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80, gap: 14 }}>
             <WellnessAvatar score={score} waterML={todayWater} sleepHours={todaySleep} hasSevereSymptom={hasSevere} />
             <HealthScoreCard score={score} waterML={todayWater} sleepHours={todaySleep} medsCompliance={medsCompliance} moodLogged={!!moodToday} />
-             <QuickActionBar waterML={todayWater} sleepHours={todaySleep} medicines={enabledMeds.map(m => ({ ...m, id: m._id || m.id }))} moodToday={moodToday?.mood || null} todayStr={todayStr} onDrinkWater={handleWater} onLogSleep={handleSleep} onToggleMed={handleMed} onLogMood={handleMood} />
+             <QuickActionBar waterML={todayWater} sleepHours={todaySleep} medicines={enabledMeds.map(m => ({ ...m, id: m._id || m.id }))} moodToday={moodToday?.mood || null} todayStr={todayStr} onDrinkWater={handleWater} onLogSleep={handleSleep} onToggleMed={handleMed} onLogMood={handleMood} onMedDeleted={loadAll} />
             <AppointmentCard appointments={appointments} onSaved={loadAll} />
             <DailySummaryCard entries={buildTodayFeed(waterLogs, sleepLogs, moods, medicines, symptoms, vitals, todayStr)} />
           </ScrollView>
